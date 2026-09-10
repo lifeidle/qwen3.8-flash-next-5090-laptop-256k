@@ -65,6 +65,16 @@ All three AD variants share the same 6 bpw N-gram table; they differ in body qua
 
 The 4.27 and 5.00 variants share an identical body (3.57 bpw) and differ only in table quantization; 3.84 compresses the body to ≈2.92 bpw — faster, but with no published quality evidence. **The daily driver is 4.27** (KLD-backed); 3.84 was later downloaded and benchmarked as a speed alternative (section 8).
 
+### Round 3: why NVFP4 is not on the list
+
+The RTX 5090 is Blackwell and supports NVFP4 tensor cores natively, so "should we use FP4?" is a fair question. The answer is no, for three reasons:
+
+1. **It doesn't exist for this model** — a full enumeration of both publishers' repositories (AtomicChat: 104 files; unsloth: 60 files) shows only K-quant / I-quant variants; zero hits for `fp4` / `nvfp`;
+2. **Compute isn't the bottleneck** — NVFP4 accelerates matrix multiplication, whereas generation here is limited by **memory bandwidth** (each token reads its activated expert weights, saturating ~20–25 GB/s). Compute has plenty of headroom: prefill reaches 89–139 tok/s;
+3. **Its effective bit-width is larger** — NVFP4 = 4-bit values + block scales ≈ **4.5 bpw**, versus the 3.57 bpw body we already run. On a machine where the model exceeds total memory, that means reading ~26% more bytes per token — strictly slower.
+
+Full argument and supporting data: [model-reference §2.4](./model-reference.md).
+
 ---
 
 ## 3. Engine and runtime: two "silent failure" traps
