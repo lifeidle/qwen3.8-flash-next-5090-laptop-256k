@@ -224,8 +224,10 @@ Three observations:
 | Use case | Config | Measured |
 |---|---|---|
 | Speed-first | ncmoe=34, ctx=64K | 24.6–28.2 tok/s |
-| **Balanced (chosen)** | **ncmoe=42, ctx=256K** | **22.8–23.4 tok/s** |
+| Balanced | ncmoe=42, ctx=256K full | 22.8–23.4 tok/s (single-shot) |
 | Multi-slot | ncmoe=48, ctx=256K | 17.7–22.5 tok/s, 8.4 GiB VRAM spare |
+
+> At this point context is maxed and speed has plateaued — but the **next section** (KV quantization) squeezes another 3–5% out of this very curve.
 
 The see-saw rule: **+2 expert layers back in RAM ≈ 2.06 GiB VRAM freed ≈ context doubles**, and speed decays gently along the whole curve — because the bottleneck is *how many expert bytes a token must read*, and moving layers only changes *where* those bytes live.
 
