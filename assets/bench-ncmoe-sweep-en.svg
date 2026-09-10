@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 400" width="860" height="400" role="img">
+<title>ncmoe sweep</title><desc>tg128 &amp; pp512 vs --n-cpu-moe</desc>
+<rect width="860" height="400" fill="#ffffff"/>
+<text x="70" y="26" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="start">llama-bench · -ngl 99 -fa on -p 512 -n 128 · RTX 5090 Laptop 24GB + 64GB</text>
+<text x="70" y="44" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="start">x-axis = --n-cpu-moe (expert layers kept on CPU; lower = more experts in VRAM)</text>
+<line x1="70" y1="326.0" x2="820" y2="326.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="330.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">0</text>
+<line x1="70" y1="272.0" x2="820" y2="272.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="276.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">20</text>
+<line x1="70" y1="218.0" x2="820" y2="218.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="222.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">40</text>
+<line x1="70" y1="164.0" x2="820" y2="164.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="168.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">60</text>
+<line x1="70" y1="110.0" x2="820" y2="110.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="114.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">80</text>
+<line x1="70" y1="56.0" x2="820" y2="56.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="60.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">100</text>
+<rect x="106.5" y="181.5" width="26" height="144.5" fill="#fd8c73" rx="3"/>
+<text x="119.5" y="175.49599999999998" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">53.5</text>
+<rect x="134.5" y="265.1" width="26" height="60.9" fill="#0969da" rx="3"/>
+<text x="147.5" y="259.06100000000004" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">22.6</text>
+<text x="132.5" y="346" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">44</text>
+<rect x="231.5" y="76.8" width="26" height="249.2" fill="#fd8c73" rx="3"/>
+<text x="244.5" y="70.78999999999999" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">92.3</text>
+<rect x="259.5" y="258.5" width="26" height="67.5" fill="#0969da" rx="3"/>
+<text x="272.5" y="252.527" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">25.0</text>
+<text x="257.5" y="346" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">40</text>
+<rect x="356.5" y="111.7" width="26" height="214.3" fill="#fd8c73" rx="3"/>
+<text x="369.5" y="105.701" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">79.4</text>
+<rect x="384.5" y="278.0" width="26" height="48.0" fill="#0969da" rx="3"/>
+<text x="397.5" y="271.994" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">17.8</text>
+<text x="382.5" y="346" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">36</text>
+<rect x="481.5" y="163.6" width="26" height="162.4" fill="#fd8c73" rx="3"/>
+<text x="494.5" y="157.595" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">60.1</text>
+<rect x="509.5" y="258.8" width="26" height="67.2" fill="#0969da" rx="3"/>
+<text x="522.5" y="252.79700000000003" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">24.9</text>
+<text x="507.5" y="346" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">34</text>
+<rect x="606.5" y="175.5" width="26" height="150.5" fill="#fd8c73" rx="3"/>
+<text x="619.5" y="169.52900000000002" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">55.7</text>
+<rect x="634.5" y="253.4" width="26" height="72.6" fill="#0969da" rx="3"/>
+<text x="647.5" y="247.424" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">26.9</text>
+<text x="632.5" y="346" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">32</text>
+<rect x="731.5" y="270.4" width="26" height="55.6" fill="#fd8c73" rx="3"/>
+<text x="744.5" y="264.38" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#1f2328" font-weight="500" text-anchor="middle">20.6</text>
+<rect x="759.5" y="313.4" width="26" height="12.6" fill="#cf222e" rx="3"/>
+<text x="772.5" y="307.445" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#cf222e" font-weight="500" text-anchor="middle">4.7</text>
+<text x="757.5" y="346" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">28</text>
+<text x="445.0" y="368" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">--n-cpu-moe</text>
+<rect x="76" y="376" width="12" height="12" fill="#fd8c73" rx="2"/>
+<text x="94" y="386" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="start">pp512 (prefill)</text>
+<rect x="256" y="376" width="12" height="12" fill="#0969da" rx="2"/>
+<text x="274" y="386" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="start">tg128 (generation)</text>
+<text x="470" y="386" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#cf222e" font-weight="400" text-anchor="start">red = the cliff after VRAM overflow (4.65 tok/s)</text>
+</svg>
