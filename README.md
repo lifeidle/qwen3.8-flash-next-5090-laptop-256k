@@ -97,6 +97,34 @@ llama-server \
 
 > 跷跷板规律 / The see-saw rule：**每 +2 层专家回内存 ≈ 腾出 2.06 GiB 显存 ≈ 上下文翻一倍**
 
+## 使用 / Serving & usage
+
+```bash
+# 1) 启动（模型加载约 40~70 秒；88 GiB 权重要从 SSD 读入页缓存）
+llama-server -m <首分片>.gguf -ngl 99 --n-cpu-moe 38 -fa on -fit off \
+  -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --host 127.0.0.1 --port 8080
+
+# 2) 浏览器打开 http://127.0.0.1:8080 直接用（自带网页界面）
+#    或接任意 OpenAI 兼容客户端：Base URL = http://127.0.0.1:8080/v1
+#    API Key 与模型名随意填（本地服务不校验），如 sk-local / qwen3.8-flash-next
+
+# 3) 命令行调用
+curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"你好"}],"max_tokens":200}'
+```
+
+客户端举例：**Cherry Studio**、**Chatbox**、**Open WebUI**（日常对话）；**Continue** / **Cline**（VS Code 写代码）。需要识图时挂 `--mmproj`（多占约 0.85 GiB 显存）。
+
+| 日常现象 | 正常值 |
+|---|---|
+| 启动耗时 | 40~70 秒 |
+| 首轮速度 | 17~19 tok/s（预热期，正常偏慢） |
+| 连续对话 | **22~25 tok/s** |
+| 系统内存占用 | 90~96%（映射工作集大于物理内存是设计前提，不是故障） |
+| 长文预填充 | ~110 tok/s → 1 万 token 约 90 秒；填满 256K 理论约 40 分钟 |
+
+**三条纪律**：① **只开一个实例**——多开必爆内存，速度跌到个位数；② 用完就关（常驻占 22 GB 显存）；③ 改配置后必须重启进程（参数只在启动时读取）。
+
 ## 目录 / Repository layout
 
 ```
