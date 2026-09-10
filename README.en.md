@@ -4,7 +4,7 @@
 
 Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — reaching the **full 256K context at 23–28 tok/s**, with the complete story of quant selection, pitfalls, and tuning.
 
-**Chosen quant**：⭐ **`AtomicChat AD-4.27bpw-Q4_K_M-M64`** (88.03 GiB, table in its own shard) — selected out of 6 candidates; see the comparison table below.
+**Chosen quant**：⭐ **`AtomicChat AD-4.27bpw-Q4_K_M-M64`** (88.03 GiB, table in its own shard)
 
 > 📄 **Full write-up** → [English](./docs/deploy-log.en.md) ｜ [中文](./docs/deploy-log.zh.md)
 > 📊 **Models & quants** → [reference](./docs/model-reference.md)
@@ -16,7 +16,7 @@ Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Lapt
 
 ## Quant selection
 
-Every available quantization was evaluated. **The decisive filter is not bit-width but shard layout** — whether the N-gram table (35.76 GiB) gets its own shard:
+**The decisive filter is not bit-width but shard layout** — whether the N-gram table (35.76 GiB) gets its own shard:
 
 | Variant | Size | Shard layout | Measured here | Verdict |
 |---|---|---|---|---|
@@ -30,7 +30,6 @@ Every available quantization was evaluated. **The decisive filter is not bit-wid
 > [!TIP]
 > **Final choice: AtomicChat AD-4.27bpw-Q4_K_M-M64**
 > Among the only viable layout ("table in its own shard"), it is the sole candidate with ① published quality data (**KLD 0.0842 / Top-1 89.49%**) and ② a body at **3.57 bpw** — the sweet spot between speed and quality.
-> Full comparison (shard structure, bpw breakdown, quality metrics): [model reference](./docs/model-reference.md).
 
 ## Results at a glance
 
@@ -39,9 +38,9 @@ Every available quantization was evaluated. **The decisive filter is not bit-wid
 | Generation | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** |
 | Context | **256K = 262,144 tokens (full model length)** |
 | VRAM used | 21.6–21.9 of 24 GiB (per config) |
-| RAM peak (single instance) | 82–96% (stable, no runaway) |
+| RAM peak (single instance) | 82–96% (stable) |
 
-> For reference, community reports on comparable hardware are around **11 tok/s** (not measured here; included only to indicate the order of magnitude).
+> Reference: community reports on comparable hardware are ~11 tok/s (not measured here).
 
 ## Final config
 
@@ -65,13 +64,13 @@ llama-server \
 ## Repository layout
 
 ```
-├── README.md / README.en.md      ← 中文 / English homepages（按访客语言自动切换）
+├── README.md / README.en.md      ← 中文 / English homepages
 ├── docs/
 │   ├── deploy-log.zh.md          ← 完整实录（中文）
-│   ├── deploy-log.en.md          ← Full write-up (English, 10 sections)
-│   ├── model-reference.md        ← Architecture params, quant comparison, why not NVFP4
+│   ├── deploy-log.en.md          ← Full write-up (English)
+│   ├── model-reference.md        ← Architecture, quants, engine, NVFP4 rationale
 │   └── porting-guide.md          ← Formulas + hardware lookup table
-├── results/
+├── results/                      ← raw measurement outputs
 │   ├── llama-bench-ncmoe-sweep.txt
 │   ├── single-instance-matrix.txt
 │   ├── long-context-and-384.txt
@@ -102,7 +101,7 @@ llama-server \
 
 ## Key takeaways
 
-1. **Layout beats bit-width.** Whether the big weight table (the 35.76 GiB N-gram table) gets its own shard decides if the whole approach is viable on this machine;
+1. **Layout beats bit-width.** Whether the 35.76 GiB N-gram table gets its own shard decides if the approach is viable on this machine;
 2. **Guard against two silent failures** — a missing CUDA runtime silently falls back to CPU; VRAM overflow silently spills over PCIe (30× slower, no error);
 3. **MoE + CPU-resident experts = speculative decoding is a net loss** — verification batches read the union of activated experts, amplifying memory traffic;
 4. **The KV cache is surprisingly small** (only 33 KiB per token) → give VRAM to context and hand experts back to RAM;
@@ -126,19 +125,19 @@ A: Use the formula in the [porting guide](./docs/porting-guide.md): `VRAM ≈ 4.
 | 64K | 34 | 24.6–28.2 tok/s |
 | **256K (full)** | **42** | **23.4 tok/s** |
 
-Bottom line: **a 24 GB card can still reach the full 256K** — each doubling of context costs 2 more expert layers handed back to RAM (a small speed drop, but still above 23 tok/s).
+Bottom line: **a 24 GB card can still reach the full 256K** — each doubling of context costs 2 more expert layers handed back to RAM (a small speed drop, still above 23 tok/s).
 On a **32 GB card** (e.g. desktop 5090), the formula suggests ncmoe 34–36 with 256K at an **estimated** 26–30 tok/s (not measured).
 
 **Q: Can generation go faster?**
 A: Two levers: ① a smaller body quant (AD-3.84bpw, measured +5–9.5%); ② more VRAM so more expert layers fit (≈+1–3% per 2 layers). MTP speculative decoding is a **net loss** in this "experts live in RAM" configuration — leave it off.
 
 **Q: Will it blow up my RAM?**
-A: Single instance peaks at 82–96%, stable. The real risk is running **multiple llama-server instances** — each demands 13–16 GiB of VRAM and two will always overflow. The bench tool enforces single-instance discipline.
+A: Single instance peaks at 82–96%, stable. The real risk is running **multiple llama-server instances** — each demands 13–16 GiB of VRAM and two will always overflow.
 
 ## Disclaimer
 
 - All numbers are **measured on one machine**; results vary with driver and build versions;
-- Model weights belong to their respective publishers — this repo documents deployment methodology only;
+- Model weights belong to their respective publishers;
 - The benchmark script **kills `llama-server` processes**; do not run it while other inference services are active.
 
 ## License
