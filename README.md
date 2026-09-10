@@ -14,7 +14,7 @@
 | 指标 / Metric | 起点 / Baseline | 最终 / Final |
 |---|---|---|
 | 生成速度 Generation | ~11 tok/s（社区同配参考 / community reference） | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** |
-| 上下文 Context | 8K | **262 144（模型全长 / full model length）** |
+| 上下文 Context | 8K | **256K = 262,144 tokens（模型全长 / full model length）** |
 | 量化 Quant | — | AtomicChat **AD-4.27bpw**（主力）/ AD-3.84bpw（速度备选） |
 | 显存占用 VRAM | — | 21.6–21.9 / 24 GiB（按档位 / per config） |
 | 单实例内存峰值 RAM peak | — | 82–96%（稳定，无失控 / stable） |
