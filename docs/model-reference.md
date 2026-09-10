@@ -1,7 +1,7 @@
 # 模型与量化参考 / Model & Quant Reference
 
-> 本页汇总部署中涉及的全部模型资料、量化对照、引擎与运行时要求。
-> All model facts, quant comparisons, engine and runtime requirements gathered during this deployment.
+> 模型资料、量化对照、引擎与运行时要求。
+> Model facts, quant comparison, engine and runtime requirements.
 
 ---
 
@@ -93,18 +93,18 @@ unsloth UD-IQ4_XS（3 片）
 
 ### 2.4 为什么没有选 NVFP4 / Why not NVFP4
 
-RTX 5090 是 Blackwell 架构，原生支持 **NVFP4**（4 位浮点 + 分块缩放）张量核，社区也常有"Blackwell 就该上 NVFP4"的说法。本次部署**没有采用**，有三个层次的原因：
+RTX 5090 是 Blackwell 架构，原生支持 **NVFP4**（4 位浮点 + 分块缩放）张量核。本次部署**未采用**，原因有三层：
 
-**① 事实层：这个模型压根没有 NVFP4 版本可下**
+**① 事实层：这个模型没有 NVFP4 版本**
 
-把两个发布方的仓库文件全量枚举过（AtomicChat 104 个文件 / unsloth 60 个文件，关键字 `fp4`、`nvfp`、`mx` 零命中）：
+两个发布方仓库全量枚举（AtomicChat 104 个文件 / unsloth 60 个文件，关键字 `fp4`、`nvfp`、`mx` 零命中）：
 
 | 发布方 | 可用量化档位 |
 |---|---|
 | AtomicChat | AD-3.84bpw-IQ4_XS-M64、AD-4.27bpw-Q4_K_M-M64、AD-5.00bpw-Q5_K_M-M64 |
 | unsloth | BF16、Q8_0、UD-IQ1_M/S、UD-IQ3_XXS、UD-IQ4_XS、UD-Q2_K_XL、UD-Q3_K_XL、UD-Q4_K_XL、UD-Q5_K_XL、UD-Q6_K_XL |
 
-全是 K-quant / I-quant（整数/混合量化），**没有任何 NVFP4 发布**。没有的东西谈不上选择。
+全是 K-quant / I-quant（整数/混合量化）。
 
 **② 原理层：就算有，对这台机器的生成速度也没帮助——瓶颈不在算力**
 
@@ -127,7 +127,7 @@ NVFP4 = 4 bit 权重 + FP8 缩放因子（每 16 个元素一个）≈ **4.5 bpw
 | AD-3.84bpw（速度备选） | ≈2.92 bpw | 少 17% → 实测快 5~9.5% |
 | 假想 NVFP4 | ≈4.5 bpw | **多约 26% → 更慢** |
 
-在这个"模型比总内存还大"的场景里，**要的是更少的字节，不是更快的数学**。所以选型方向一直是"同布局下取更小位宽"（4.27 → 3.84 就是这么来的），而不是追求更强的算力格式。
+在这个"模型比总内存还大"的场景里，**要的是更少的字节，不是更快的数学**。选型方向也一直是"同布局下取更小位宽"，而不是追求更强的算力格式。
 
 **什么情况下 NVFP4 才值得考虑**：① 出现官方 NVFP4 量化、且等效位宽 ≤ 现有档位；② 工作负载转向**算力密集**（如大批量并发推理、长文预填充为主）；③ llama.cpp 对 `qwen4exp` + 混合 SSM 架构的 FP4 内核完整可用（目前路径覆盖有限，混合架构风险较高）。
 
@@ -135,9 +135,9 @@ NVFP4 = 4 bit 权重 + FP8 缩放因子（每 16 个元素一个）≈ **4.5 bpw
 
 三个理由，按决定性排序：
 
-1. **内存分级能力**——只有 llama.cpp 提供 `--n-cpu-moe` 这种"按层把专家权重留在内存、其余进显存"的精细控制（配合 `-ot` 可做张量级覆盖），这正是本机 24G+64G 跑 88 GiB 模型的前提。vLLM/TensorRT-LLM 面向"权重能全进显存"的场景；
-2. **mmap 分片按需分页**——N-gram 表放 SSD 的方案依赖 mmap 的按需换页，这在此前的工作流里是天然支持；
-3. **配套齐备**——MTP 投机解码头、mmproj 视觉编码器、混合 SSM 架构的 CUDA 内核，这个构建都已具备（即使我们最终没用 MTP）。
+1. **内存分级能力**——只有 llama.cpp 提供 `--n-cpu-moe` 这种"按层把专家权重留在内存、其余进显存"的精细控制（配合 `-ot` 可做张量级覆盖），这是本机 24G+64G 跑 88 GiB 模型的前提。vLLM/TensorRT-LLM 面向"权重能全进显存"的场景；
+2. **mmap 分片按需分页**——"N-gram 表放 SSD"这个方案依赖 mmap 的按需换页；
+3. **配套齐备**——MTP 投机解码头、mmproj 视觉编码器、混合 SSM 架构的 CUDA 内核，该构建均已具备。
 
 ---
 
