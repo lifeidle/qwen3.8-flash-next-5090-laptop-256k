@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 360" width="860" height="360" role="img">
+<title>context tiers</title><desc>generation speed vs context length</desc>
+<rect width="860" height="360" fill="#ffffff"/>
+<text x="70" y="26" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="start">同一口径实测（450 token 生成，预热后）· AD-4.27bpw · RTX 5090 Laptop</text>
+<text x="70" y="44" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="start">每翻一倍上下文，就把 2 层专家从显存挪回内存（--n-cpu-moe +2）</text>
+<line x1="70" y1="276.0" x2="820" y2="276.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="280.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">0</text>
+<line x1="70" y1="222.5" x2="820" y2="222.5" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="226.5" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">8</text>
+<line x1="70" y1="169.0" x2="820" y2="169.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="173.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">16</text>
+<line x1="70" y1="115.5" x2="820" y2="115.5" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="119.5" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">24</text>
+<line x1="70" y1="62.0" x2="820" y2="62.0" stroke="#d8dee4" stroke-width="1"/>
+<text x="62" y="66.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">32</text>
+<rect x="135.0" y="131.1" width="120" height="144.9" fill="#a5d6ff" rx="4"/>
+<text x="195.0" y="121.14875" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" fill="#1f2328" font-weight="500" text-anchor="middle">21.7 tok/s</text>
+<text x="195.0" y="298" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1f2328" font-weight="500" text-anchor="middle">32K</text>
+<text x="195.0" y="318" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">ncmoe=32</text>
+<text x="195.0" y="336" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">基准档</text>
+<rect x="385.0" y="111.4" width="120" height="164.6" fill="#54aeff" rx="4"/>
+<text x="445.0" y="101.420625" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" fill="#1f2328" font-weight="500" text-anchor="middle">24.6 tok/s</text>
+<text x="445.0" y="298" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1f2328" font-weight="500" text-anchor="middle">64K</text>
+<text x="445.0" y="318" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">ncmoe=34</text>
+<text x="445.0" y="336" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">速度档</text>
+<rect x="635.0" y="119.3" width="120" height="156.7" fill="#0969da" rx="4"/>
+<text x="695.0" y="109.31187500000001" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="15" fill="#1f2328" font-weight="500" text-anchor="middle">23.4 tok/s</text>
+<text x="695.0" y="298" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1f2328" font-weight="500" text-anchor="middle">256K</text>
+<text x="695.0" y="318" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">ncmoe=42</text>
+<text x="695.0" y="336" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="middle">均衡档 · 定稿</text>
+</svg>
