@@ -1,0 +1,23 @@
+配置 ncmoe=32 / ctx=8192 的显存与内存分配账本（-lv 4 详细日志提取）
+VRAM & RAM allocation ledger for ncmoe=32, ctx=8192 (extracted from a -lv 4 log)
+=========================================================================
+0.00.111.565 I cmn  common_param: device_info:
+0.00.201.267 I cmn  common_param:   - CUDA0   : NVIDIA GeForce RTX 5090 Laptop GPU (24435 MiB, 23151 MiB free)
+0.00.283.003 I llama_model_loader: - kv   0:                       general.architecture str              = qwen4exp
+0.00.283.043 I llama_model_loader: - kv  11:                       qwen4exp.block_count u32              = 48
+0.00.283.043 I llama_model_loader: - kv  12:                    qwen4exp.context_length u32              = 262144
+0.00.283.044 I llama_model_loader: - kv  14:              qwen4exp.attention.head_count u32              = 24
+0.00.283.044 I llama_model_loader: - kv  15:           qwen4exp.attention.head_count_kv u32              = 2
+0.00.283.052 I llama_model_loader: - kv  19:                      qwen4exp.expert_count u32              = 512
+0.00.283.052 I llama_model_loader: - kv  20:                 qwen4exp.expert_used_count u32              = 10
+0.00.283.054 I llama_model_loader: - kv  25:                   qwen4exp.ssm.conv_kernel u32              = 4
+0.00.283.057 I llama_model_loader: - kv  34:      qwen4exp.attention.indexer.head_count u32              = 4
+0.06.073.629 I load_tensors:        CUDA0 model buffer size = 21370.57 MiB
+0.17.817.221 I llama_kv_cache:      CUDA0 KV buffer size =   192.00 MiB
+0.17.822.819 I llama_memory_recurrent:      CUDA0 RS buffer size =   112.57 MiB
+0.17.823.103 I llama_kv_cache:      CUDA0 KV buffer size =    72.00 MiB
+0.17.849.725 I sched_reserve:      CUDA0 compute buffer size =   639.57 MiB
+
+[要点] KV 缓存仅 264 MiB(192+72)；循环态 RS 112.6 MiB 固定不随上下文增长；
+       计算缓冲 639.6 MiB；模型权重 21370.6 MiB；CPU 端映射共 47 段。
+[key] KV cache is just 264 MiB; recurrent state is fixed; model buffer 21.4 GB.
