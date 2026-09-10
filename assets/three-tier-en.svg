@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 430" width="860" height="430" role="img">
+<title>three-tier memory split</title><desc>what goes to SSD / RAM / VRAM and why</desc>
+<rect width="860" height="430" fill="#ffffff"/>
+<text x="40" y="34" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1f2328" font-weight="500" text-anchor="start">Three-tier memory split (ncmoe=42 · ctx=262144 · AD-4.27bpw)</text>
+<text x="40" y="54" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="start">Allocated by access pattern: KBs per token → SSD; 2% active → RAM; read in full → VRAM</text>
+<rect x="40" y="76" width="780" height="100" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1.5"/>
+<rect x="40" y="76" width="6" height="100" rx="3" fill="#8250df"/>
+<text x="62" y="102" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#8250df" font-weight="500" text-anchor="start">SSD</text>
+<text x="250" y="102" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#656d76" font-weight="400" text-anchor="start">88.03 GiB of model files</text>
+<text x="62" y="126" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· N-gram table: 35.76 GiB (51.2B params)</text>
+<text x="62" y="146" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· 16 rows read per token ≈ a few KB; cold pages paged in on demand</text>
+<text x="800" y="162" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11.5" fill="#656d76" font-weight="400" text-anchor="end">mmap demand paging · near-zero cost</text>
+<rect x="40" y="190" width="780" height="100" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1.5"/>
+<rect x="40" y="190" width="6" height="100" rx="3" fill="#bf8700"/>
+<text x="62" y="216" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#bf8700" font-weight="500" text-anchor="start">System RAM · 64 GB</text>
+<text x="250" y="216" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#656d76" font-weight="400" text-anchor="start">mapped working set 79 GiB (ratio 1.23, stable)</text>
+<text x="62" y="240" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· 42 expert layers ≈ 43.3 GiB (10 of 512 active per token)</text>
+<text x="62" y="260" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· page cache for the table (reclaimable)</text>
+<text x="800" y="276" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11.5" fill="#656d76" font-weight="400" text-anchor="end">measured RAM peak 94–96%</text>
+<rect x="40" y="304" width="780" height="100" rx="10" fill="#f6f8fa" stroke="#d8dee4" stroke-width="1.5"/>
+<rect x="40" y="304" width="6" height="100" rx="3" fill="#1a7f37"/>
+<text x="62" y="330" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1a7f37" font-weight="500" text-anchor="start">VRAM · 24 GB</text>
+<text x="250" y="330" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#656d76" font-weight="400" text-anchor="start">20.9 GiB used</text>
+<text x="62" y="354" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· 6 expert layers 6.18 + attention/resident 4.4 GiB</text>
+<text x="62" y="374" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· KV cache 8.25 GiB (256K full)</text>
+<text x="62" y="394" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1f2328" font-weight="400" text-anchor="start">· compute buffer 1.98 + recurrent state 0.11 GiB</text>
+<text x="800" y="390" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11.5" fill="#656d76" font-weight="400" text-anchor="end">keep ≥1.5 GiB headroom</text>
+</svg>
