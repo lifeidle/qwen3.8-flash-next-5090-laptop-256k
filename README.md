@@ -26,15 +26,28 @@
 
 | 指标 / Metric | 最终 / Final |
 |---|---|
-| 生成速度 Generation | **21.7 / 24.6–28.2 / 23.4 tok/s**（32K / 64K / 256K） |
+| 生成速度 Generation | **22.1~25.3 tok/s**（256K 全长；多轮中位数 22.07，长答均值 25.34） |
 | 上下文 Context | **256K = 262,144 tokens**（模型全长 / full length） |
-| 显存占用 VRAM | 21.6–21.9 / 24 GiB |
-| 单实例内存峰值 RAM peak | 82–96% |
 | 量化 Quant | AD-4.27bpw（主力）/ AD-3.84bpw（速度备选） |
+| **KV 缓存** | **q8_0**（从 8.25 GiB 降到 ~4.13 GiB，省下的显存多放 4 层专家 → **+3.4~5%**） |
+| 显存占用 VRAM | ~20.9 / 24 GiB |
+| 单实例内存峰值 RAM peak | 82–96% |
 
 ![上下文档位实测](assets/context-tier.svg)
 
-<sub>参照：社区同配置反馈约 11 tok/s（非本机实测）</sub>
+### 还能再挖 3~5%：把 KV 从显存里省出来
+
+KV 缓存不参与计算却占着显存。量化它 → 省下的显存换更多专家层进显存 → 每 token 少读一份内存（生成阶段正是受内存带宽限制）。
+
+![KV 量化收益](assets/kv-quant-gain.svg)
+
+| 配置 | ncmoe | 生成速度（多轮中位数） | 长上下文召回精度 |
+|---|---|---|---|
+| f16 KV（基线） | 42 | 21.34 tok/s | 12/12 = 100% |
+| **q8_0 KV** ⭐ | **38** | **22.07（+3.4%）** | **12/12 = 100%** |
+| q4_0 KV | 36 | 25.03（长答均值，未更快） | 12/12 = 100% |
+
+> 精度用**多轮随机化「大海捞针」**验证：9.7k token 文档、3 个事实埋在不同随机深度、同种子跨配置对比、检查 `finish_reason` 排除截断假象（见 [results/needle-accuracy.txt](./results/needle-accuracy.txt)）。
 
 ## 三层内存分配 / Three-tier split
 
@@ -64,17 +77,19 @@
 ```bash
 llama-server \
   -m Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64-00001-of-00033.gguf \
-  -ngl 99 --n-cpu-moe 42 \
+  -ngl 99 --n-cpu-moe 38 \
   -fa on -fit off \
   -c 262144 -np 1 \
+  -ctk q8_0 -ctv q8_0 \
   --jinja
 ```
 
-| 需求 Need | ncmoe | ctx | 实测 Measured |
-|---|---:|---:|---|
-| 极速 Speed-first | 34 | 65,536 | 24.6–28.2 tok/s |
-| **均衡 Balanced（推荐）** | **42** | **262,144** | **23.4 tok/s** |
-| 多会话 Multi-slot | 48 | 262,144 | 17.7–22.5 tok/s |
+| 需求 Need | ncmoe | ctx | KV | 实测 Measured |
+|---|---:|---:|---|---|
+| 极速 Speed-first | 32 | 65,536 | f16 | 24.6–28.2 tok/s |
+| **均衡 Balanced（推荐）** | **38** | **262,144** | **q8_0** | **22.1~25.3 tok/s** |
+| 精度最保守 Conservative | 42 | 262,144 | f16 | 21.3 tok/s |
+| 多会话 Multi-slot | 44 | 262,144 | q8_0 | 显存余量更大，可开 `-np` 多槽 |
 
 ![ncmoe 扫描](assets/bench-ncmoe-sweep.svg)
 
@@ -89,7 +104,7 @@ llama-server \
 ├── README.en.md                  ← English homepage
 ├── assets/                       ← 图表 / charts (SVG)
 ├── docs/
-│   ├── deploy-log.zh.md          ← 完整实录（中文，十节）
+│   ├── deploy-log.zh.md          ← 完整实录（中文，十一节）
 │   ├── deploy-log.en.md          ← Full write-up (English)
 │   ├── model-reference.md        ← 架构参数、量化对照、引擎与运行时、NVFP4 说明
 │   └── porting-guide.md          ← 移植公式与硬件对照表
@@ -99,9 +114,14 @@ llama-server \
 │   ├── long-context-and-384.txt
 │   ├── mtp-draft-acceptance.txt
 │   ├── vram-ledger-8192.txt
-│   └── oom-evidence-ncmoe40-ctx256k.txt
+│   ├── oom-evidence-ncmoe40-ctx256k.txt
+│   ├── kv-quant-ab.txt           ← KV 量化 A/B（+3.4%）
+│   ├── needle-accuracy.txt       ← 长上下文召回精度（12/12）
+│   └── engine-build-ab.txt       ← 引擎构建 A/B（无提升）
 ├── tools/
-│   └── bench_single_instance.py  ← 单实例纪律的基准测试驱动（可复用于任意 GGUF）
+│   ├── bench_single_instance.py  ← ncmoe 扫描驱动（单实例纪律）
+│   ├── ab_bench.py               ← 多轮取中位数的服务端基准
+│   └── needle_test.py            ← 长上下文召回精度测试
 └── LICENSE
 ```
 
@@ -125,8 +145,14 @@ A: 用 [移植指南](./docs/porting-guide.md) 的公式自己算：`VRAM ≈ 4.
 **24G 显存也能把 256K 开满**，代价是每多要一倍上下文，就要多还 2 层专家到内存（速度略降，仍在 23 tok/s 以上）。
 若你是 **32G 显存**（如台式 5090），按公式可停在 ncmoe 34~36 + 256K，速度**推算** 26~30 tok/s（未实测）。
 
+**Q: KV 量化（`-ctk/-ctv q8_0`）会不会掉精度？**
+A: 本机实测**无损失**：9.7k token 文档、随机深度埋 3 个事实、4 组测试，f16 与 q8_0 均为 **12/12 满分**（[原始数据](./results/needle-accuracy.txt)）。而且省下的 4 GiB 显存能多放 4 层专家，直接换来 **+3.4~5%** 速度 —— 这是目前性价比最高的一档优化。q4_0 精度也过关但**速度并未更快**，故不推荐。
+
+**Q: 换个更新的 llama.cpp 构建会不会更快？**
+A: 实测**没有提升**。b10840 与 b10889 在 llama-bench（r=3 / r=5）和生产配置服务端（6 轮取中位数：21.34 vs 20.86 tok/s）上都统计不可区分（[原始数据](./results/engine-build-ab.txt)）。原因：生成阶段受**内存带宽**限制，引擎升级优化的是**计算路径**。反例是"小模型 + NVFP4 + 权重全在显存"——那是算力受限，内核升级才有效。
+
 **Q: 生成速度还能再快吗？**
-A: 两条路：① 换更小的主体量化（AD-3.84bpw，实测 +5~9.5%）；② 增加显存、让更多专家层进显存（每多 2 层约 +1~3%）。MTP 投机解码在这类"专家驻留内存"的配置下是**负收益**，不要开。
+A: 目前只剩三条路：① 更小的主体量化（AD-3.84bpw，实测 +5~9.5%，但质量无公开背书）；② 更多显存放专家（本机已接近上限，KV 量化已把可挖的挖完）；③ 更快的内存（本机 4 条 16GB 受双 DIMM/通道限制跑在 5200 MT/s，换 2×32GB 可跑满 5600，带宽 +7.7%）。MTP 投机解码是**负收益**，换新引擎**无收益**，两条都已实测排除。
 
 **Q: 会不会把内存撑爆？**
 A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是同时开多个 llama-server 实例**——每个要 13~16 GiB 显存，两个必爆。
@@ -158,8 +184,10 @@ A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是�
 1. **布局比位宽重要** — N-gram 表（35.76 GiB）是否独占分片，决定方案能否成立；
 2. **两类静默失败**要防 — CUDA 运行时缺失会静默退回 CPU；显存溢出会静默走 PCIe（慢 30 倍、无报错）；
 3. **MoE + CPU 专家 = 投机解码负收益** — 验证批的专家激活并集会放大内存流量；
-4. **KV 缓存小得出奇**（每 token 仅 33 KiB）→ 显存尽量让给上下文，把专家还给内存；
-5. **`--n-cpu-moe` 是唯一的旋钮**，且存在悬崖（本例 28 层即崩）。
+4. **KV 缓存小得出奇**（每 token 仅 33 KiB）→ 显存尽量让给上下文，把专家还给内存；**而且 KV 本身还能量化**，省出的显存换专家层 = 免费提速；
+5. **`--n-cpu-moe` 是唯一的旋钮**，且存在悬崖（本例 28 层即崩）；
+6. **换引擎不会更快** — 生成受内存带宽限制，内核升级优化的是算力路径（实测无提升）；
+7. **测速必须多轮取中位数** — 服务端首轮普遍偏慢，单发测量会得出错误结论。
 
 ## 免责声明 / Disclaimer
 
