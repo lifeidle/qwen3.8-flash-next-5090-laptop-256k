@@ -157,10 +157,7 @@ def run_case(server, model, args_list, port, ncmoe, ctx, long_tokens, logdir, re
     gen, ntok = tt.get("predicted_per_second", 0), r["usage"].get("completion_tokens", 0)
     # 长上下文专项 / long-context probe
     long_note = "skipped"
-    core = LONG_PROMPT
     if long_tokens:
-        approx = max(1, long_tokens // 90)
-        core = LONG_PROMPT.replace("for i in range", "") # placeholder, prompt reused as-is
         r2, err2 = req(port, 200, LONG_PROMPT, 600)
         if r2 is None:
             long_note = f"long failed: {err2}"
@@ -184,7 +181,8 @@ def main():
     ap.add_argument("--configs", required=True, help='形如 "32:8192,42:262144"（ncmoe:ctx）')
     ap.add_argument("--port", type=int, default=8080)
     ap.add_argument("--long-tokens", type=int, default=0,
-                    help="附加长 prompt 测试（0=跳过；建议 8000 以上）/ optional long-context probe")
+                    help="是否附加长 prompt 测试（0=跳过，>0=执行内置约 8k token 的中文长 prompt）"
+                         " / run the built-in ~8k-token long-context probe")
     ap.add_argument("--ready-timeout", type=int, default=240, help="等待服务器就绪的秒数")
     ap.add_argument("--extra", default="", help="透传给 llama-server 的额外参数（空格分隔）")
     ap.add_argument("--logdir", default=".", help="日志目录")
