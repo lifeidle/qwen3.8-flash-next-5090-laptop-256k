@@ -104,8 +104,11 @@ llama-server -m <first-shard>.gguf -ngl 99 --n-cpu-moe 38 -fa on -fit off \
   -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --host 127.0.0.1 --port 8080
 
 # 2) Open http://127.0.0.1:8080 in a browser (built-in web UI),
-#    or point any OpenAI-compatible client at http://127.0.0.1:8080/v1
-#    API key and model name can be anything (no auth locally): sk-local / qwen3.8-flash-next
+#    or add it as an OpenAI-compatible provider in any client / app:
+#      Base URL : http://127.0.0.1:8080/v1
+#      Model    : qwen3.8-flash-next   (set via --alias)
+#      API key  : not required (type a placeholder if the form demands one)
+#    Check the exact model id at http://127.0.0.1:8080/v1/models
 
 # 3) Or call it from the command line
 curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
