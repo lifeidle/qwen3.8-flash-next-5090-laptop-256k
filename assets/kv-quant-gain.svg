@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 400" width="860" height="400" role="img">
+<title>KV 量化收益</title><desc>freeing VRAM from the KV cache to hold more expert layers</desc>
+<rect width="860" height="400" fill="#ffffff"/>
+<text x="80" y="30" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="14" fill="#1f2328" font-weight="500" text-anchor="start">KV 缓存量化：把显存从 KV 里省出来，多放 4 层专家到显存</text>
+<text x="80" y="50" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#656d76" font-weight="400" text-anchor="start">生成阶段受内存带宽限制 —— 显存里多一层专家，每 token 就少读一份内存</text>
+<line x1="80" y1="304.0" x2="820" y2="304.0" stroke="#d8dee4"/>
+<text x="72" y="308.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">0</text>
+<line x1="80" y1="251.0" x2="820" y2="251.0" stroke="#d8dee4"/>
+<text x="72" y="255.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">6</text>
+<line x1="80" y1="198.0" x2="820" y2="198.0" stroke="#d8dee4"/>
+<text x="72" y="202.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">12</text>
+<line x1="80" y1="145.0" x2="820" y2="145.0" stroke="#d8dee4"/>
+<text x="72" y="149.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">18</text>
+<line x1="80" y1="92.0" x2="820" y2="92.0" stroke="#d8dee4"/>
+<text x="72" y="96.0" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="11" fill="#656d76" font-weight="400" text-anchor="end">24</text>
+<rect x="210" y="115.5" width="150" height="188.5" fill="#cf222e" rx="5" opacity="0.88"/>
+<text x="285.0" y="103.49666666666667" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="17" fill="#1f2328" font-weight="500" text-anchor="middle">21.34 tok/s</text>
+<text x="285.0" y="328" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">f16 KV</text>
+<text x="285.0" y="347" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="400" text-anchor="middle">ncmoe=42</text>
+<text x="285.0" y="372" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#cf222e" font-weight="500" text-anchor="middle">基线</text>
+<rect x="480" y="109.0" width="150" height="195.0" fill="#1a7f37" rx="5" opacity="0.88"/>
+<text x="555.0" y="97.04833333333332" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="17" fill="#1f2328" font-weight="500" text-anchor="middle">22.07 tok/s</text>
+<text x="555.0" y="328" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="500" text-anchor="middle">q8_0 KV</text>
+<text x="555.0" y="347" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="13" fill="#1f2328" font-weight="400" text-anchor="middle">ncmoe=38</text>
+<text x="555.0" y="372" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12.5" fill="#1a7f37" font-weight="500" text-anchor="middle">推荐</text>
+<path d="M 360 110 L 480 110" stroke="#1a7f37" stroke-width="2"/>
+<path d="M 472 105 L 480 110 L 472 115" fill="#1a7f37"/>
+<text x="420.0" y="102" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="16" fill="#1a7f37" font-weight="500" text-anchor="middle">+3.4%</text>
+<rect x="80" y="360" width="740" height="26" rx="6" fill="#f6f8fa" stroke="#d8dee4"/>
+<text x="94" y="378" font-family="system-ui,-apple-system,'Segoe UI',Helvetica,Arial,sans-serif" font-size="12" fill="#1f2328" font-weight="400" text-anchor="start">长上下文召回精度（4 组 × 3 针，随机深度）：两者均 12/12 = 100%</text>
+</svg>
