@@ -4,6 +4,8 @@
 
 Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — reaching the **full 256K context at 23–28 tok/s**, with the complete story of quant selection, pitfalls, and tuning.
 
+**Chosen quant**：⭐ **`AtomicChat AD-4.27bpw-Q4_K_M-M64`** (88.03 GiB, table in its own shard) — selected out of 6 candidates; see the comparison table below.
+
 > 📄 **Full write-up** → [English](./docs/deploy-log.en.md) ｜ [中文](./docs/deploy-log.zh.md)
 > 📊 **Models & quants** → [reference](./docs/model-reference.md)
 > 🔧 **Port to your hardware** → [porting guide](./docs/porting-guide.md)
@@ -12,15 +14,34 @@ Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Lapt
 
 ---
 
+## Quant selection
+
+Every available quantization was evaluated. **The decisive filter is not bit-width but shard layout** — whether the N-gram table (35.76 GiB) gets its own shard:
+
+| Variant | Size | Shard layout | Measured here | Verdict |
+|---|---|---|---|---|
+| ⭐ **AtomicChat AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 shards | ✅ table in its own shard | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** | ✅ **Chosen · primary** |
+| AtomicChat AD-3.84bpw-IQ4_XS-M64 | 79.10 GiB / 28 shards | ✅ table in its own shard | **+5–9.5%** at equal settings (64K warm: 28.24 tok/s) | ⚠️ Speed alternative (body ≈2.92 bpw, no quality data) |
+| AtomicChat AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 shards | ✅ own shard (table 50.66 GiB) | not tested | ⚠️ Not chosen: bigger table, more SSD pressure |
+| unsloth UD-IQ4_XS | 87.25 GiB / 3 shards | ❌ table mixed with experts | not tested | ❌ **Layout unusable**: whole shard pinned in RAM, up to 89.6 GiB resident > 64 GiB |
+| unsloth UD-Q3_K_XL | 83.80 GiB / 3 shards | ❌ mixed (inferred) | not tested | ❌ Same problem |
+| NVFP4 (Blackwell native) | — | — | — | ❌ **No such quant for this model** (164 files enumerated across both repos, zero hits) |
+
+> [!TIP]
+> **Final choice: AtomicChat AD-4.27bpw-Q4_K_M-M64**
+> Among the only viable layout ("table in its own shard"), it is the sole candidate with ① published quality data (**KLD 0.0842 / Top-1 89.49%**) and ② a body at **3.57 bpw** — the sweet spot between speed and quality.
+> Full comparison (shard structure, bpw breakdown, quality metrics): [model reference](./docs/model-reference.md).
+
 ## Results at a glance
 
-| Metric | Baseline | Final |
-|---|---|---|
-| Generation | ~11 tok/s (community reference on comparable hardware) | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** |
-| Context | 8K | **256K = 262,144 tokens (full model length)** |
-| Quant | — | AtomicChat **AD-4.27bpw** (primary) / AD-3.84bpw (speed option) |
-| VRAM used | — | 21.6–21.9 of 24 GiB (per config) |
-| RAM peak (single instance) | — | 82–96% (stable, no runaway) |
+| Metric | Final |
+|---|---|
+| Generation | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** |
+| Context | **256K = 262,144 tokens (full model length)** |
+| VRAM used | 21.6–21.9 of 24 GiB (per config) |
+| RAM peak (single instance) | 82–96% (stable, no runaway) |
+
+> For reference, community reports on comparable hardware are around **11 tok/s** (not measured here; included only to indicate the order of magnitude).
 
 ## Final config
 
