@@ -5,6 +5,8 @@
 **中文**：一台 RTX 5090 笔记本（24G 显存）+ 64G 内存，跑通 Qwen3.8-Flash-Next 177B 的 GGUF 量化版：**256K 上下文、23–28 tok/s**，以及完整的选型、踩坑与调优记录。
 **English**: Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — **256K context at 23–28 tok/s**, with the full story of quant selection, pitfalls, and tuning.
 
+**选定量化 / Chosen quant**：⭐ **`AtomicChat AD-4.27bpw-Q4_K_M-M64`**（88.03 GiB，表独占分片）—— 在 6 个候选中胜出，理由见下方对照表。
+
 > 📄 **完整实录** → [中文](./docs/deploy-log.zh.md) ｜ [English](./docs/deploy-log.en.md)
 > 📊 **模型与量化参考** → [models & quants](./docs/model-reference.md)
 > 🔧 **移植到其他硬件** → [porting guide](./docs/porting-guide.md)
@@ -13,15 +15,34 @@
 
 ---
 
+## 量化选型结果 / Quant selection
+
+把能找到的量化版本全部评估了一遍。**决定性筛除条件不是位宽，而是分片布局**——N-gram 表（35.76 GiB）是否独占分片：
+
+| 量化版本 | 大小 | 分片布局 | 本机实测 | 判定 |
+|---|---|---|---|---|
+| ⭐ **AtomicChat AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 片 | ✅ 表独占分片 | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** | ✅ **选定 · 主力** |
+| AtomicChat AD-3.84bpw-IQ4_XS-M64 | 79.10 GiB / 28 片 | ✅ 表独占分片 | 同档 **+5~9.5%**（64K 热态 28.24 tok/s） | ⚠️ 速度备选（主体 ≈2.92bpw，质量无数据） |
+| AtomicChat AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 片 | ✅ 表独占分片（表 50.66 GiB） | 未测 | ⚠️ 未选：表更大，SSD 读压力上升 |
+| unsloth UD-IQ4_XS | 87.25 GiB / 3 片 | ❌ 表与专家混装 | 未测 | ❌ **布局不可用**：整片被锁进内存，最坏 89.6 GiB 常驻 > 64 GiB |
+| unsloth UD-Q3_K_XL | 83.80 GiB / 3 片 | ❌ 混装（推定） | 未测 | ❌ 同上 |
+| NVFP4（Blackwell 原生格式） | — | — | — | ❌ **该模型无此版本**（两仓库共 164 个文件枚举，零命中） |
+
+> [!TIP]
+> **最终选择：AtomicChat AD-4.27bpw-Q4_K_M-M64**
+> 在"表独占分片"这一唯一可行的布局里，只有它同时满足：① 有公开质量数据（**KLD 0.0842 / Top-1 89.49%**）；② 主体 **3.57 bpw** 位于"速度 vs 质量"的平衡点。
+> 完整对照（分片结构、bpw 拆解、逐项质量指标）见 [模型与量化参考](./docs/model-reference.md)。
+
 ## 成果一览 / Results at a glance
 
-| 指标 / Metric | 起点 / Baseline | 最终 / Final |
-|---|---|---|
-| 生成速度 Generation | ~11 tok/s（社区同配参考 / community reference） | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** |
-| 上下文 Context | 8K | **256K = 262,144 tokens（模型全长 / full model length）** |
-| 量化 Quant | — | AtomicChat **AD-4.27bpw**（主力）/ AD-3.84bpw（速度备选） |
-| 显存占用 VRAM | — | 21.6–21.9 / 24 GiB（按档位 / per config） |
-| 单实例内存峰值 RAM peak | — | 82–96%（稳定，无失控 / stable） |
+| 指标 / Metric | 最终 / Final |
+|---|---|
+| 生成速度 Generation | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** |
+| 上下文 Context | **256K = 262,144 tokens（模型全长 / full model length）** |
+| 显存占用 VRAM | 21.6–21.9 / 24 GiB（按档位 / per config） |
+| 单实例内存峰值 RAM peak | 82–96%（稳定，无失控 / stable） |
+
+> 作为参照：社区同配置的反馈约为 **11 tok/s**（非本机实测，仅用于说明量级）。
 
 ## 最终配置 / Final config
 
