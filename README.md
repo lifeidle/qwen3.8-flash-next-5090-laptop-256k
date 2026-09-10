@@ -105,8 +105,11 @@ llama-server -m <首分片>.gguf -ngl 99 --n-cpu-moe 38 -fa on -fit off \
   -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --host 127.0.0.1 --port 8080
 
 # 2) 浏览器打开 http://127.0.0.1:8080 直接用（自带网页界面）
-#    或接任意 OpenAI 兼容客户端：Base URL = http://127.0.0.1:8080/v1
-#    API Key 与模型名随意填（本地服务不校验），如 sk-local / qwen3.8-flash-next
+#    或接任意 OpenAI 兼容客户端 / 软件：
+#      API 地址 (Base URL) : http://127.0.0.1:8080/v1
+#      模型名 (Model)      : qwen3.8-flash-next   （--alias 设定）
+#      API Key             : 不需要（界面强制要求非空就随便填）
+#    核对模型名：浏览器打开 http://127.0.0.1:8080/v1/models 看 id 字段
 
 # 3) 命令行调用
 curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
