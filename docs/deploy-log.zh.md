@@ -7,7 +7,7 @@
 
 > 硬件：RTX 5090 Laptop GPU（24 GB 显存）/ 64 GB 内存 / NVMe 固态
 > 目标模型：Qwen3.8-Flash-Next 的 GGUF 量化版（总参数 176.9B，其中 **51.2B 是 N-gram embedding 表**，MoE 主体 125.7B，激活约 3B）
-> 最终成果：**生成 21~28 tok/s（社区同款配置基线约 11 tok/s），上下文从 8K 拉到 256K 全长**
+> 最终成果：**生成 21~28 tok/s（社区同款配置基线约 11 tok/s），上下文从 8K 拉到 256K 全长**（256K = 262,144 tokens，即模型 `context_length` 标称值）
 > 日期：2026 年 9 月
 
 ---
