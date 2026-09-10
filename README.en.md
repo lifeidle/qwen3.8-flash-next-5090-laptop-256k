@@ -25,15 +25,28 @@ Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Lapt
 
 | Metric | Final |
 |---|---|
-| Generation | **21.7 / 24.6–28.2 / 23.4 tok/s** (32K / 64K / 256K) |
+| Generation | **22.1–25.3 tok/s** (256K full length; multi-round median 22.07, long-answer mean 25.34) |
 | Context | **256K = 262,144 tokens** (full model length) |
-| VRAM used | 21.6–21.9 of 24 GiB |
-| RAM peak (single instance) | 82–96% |
 | Quant | AD-4.27bpw (primary) / AD-3.84bpw (speed option) |
+| **KV cache** | **q8_0** (8.25 GiB → ~4.13 GiB; the freed VRAM holds 4 more expert layers → **+3.4–5%**) |
+| VRAM used | ~20.9 of 24 GiB |
+| RAM peak (single instance) | 82–96% |
 
 ![Context tiers](assets/context-tier-en.svg)
 
-<sub>Reference: community reports on comparable hardware are ~11 tok/s (not measured here)</sub>
+### Another 3–5%: freeing VRAM from the KV cache
+
+The KV cache does no compute but occupies VRAM. Quantizing it frees room for more expert layers on the GPU, so each token reads fewer bytes from RAM — and generation is exactly where memory bandwidth binds.
+
+![KV quantization gain](assets/kv-quant-gain-en.svg)
+
+| Config | ncmoe | Generation (multi-round median) | Long-context retrieval |
+|---|---|---|---|
+| f16 KV (baseline) | 42 | 21.34 tok/s | 12/12 = 100% |
+| **q8_0 KV** ⭐ | **38** | **22.07 (+3.4%)** | **12/12 = 100%** |
+| q4_0 KV | 36 | 25.03 (long-answer mean, not faster) | 12/12 = 100% |
+
+> Accuracy validated with a **multi-trial randomized needle test**: a 9.7k-token document, 3 facts at random depths, identical seeds across configs, and `finish_reason` checks to rule out truncation artifacts (see [results/needle-accuracy.txt](./results/needle-accuracy.txt)).
 
 ## Three-tier memory split
 
@@ -63,17 +76,19 @@ The core idea: **allocate by access pattern** instead of pushing everything into
 ```bash
 llama-server \
   -m Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64-00001-of-00033.gguf \
-  -ngl 99 --n-cpu-moe 42 \
+  -ngl 99 --n-cpu-moe 38 \
   -fa on -fit off \
   -c 262144 -np 1 \
+  -ctk q8_0 -ctv q8_0 \
   --jinja
 ```
 
-| Need | ncmoe | ctx | Measured |
-|---|---:|---:|---|
-| Speed-first | 34 | 65,536 | 24.6–28.2 tok/s |
-| **Balanced (recommended)** | **42** | **262,144** | **23.4 tok/s** |
-| Multi-slot | 48 | 262,144 | 17.7–22.5 tok/s |
+| Need | ncmoe | ctx | KV | Measured |
+|---|---:|---:|---|---|
+| Speed-first | 32 | 65,536 | f16 | 24.6–28.2 tok/s |
+| **Balanced (recommended)** | **38** | **262,144** | **q8_0** | **22.1–25.3 tok/s** |
+| Most conservative | 42 | 262,144 | f16 | 21.3 tok/s |
+| Multi-slot | 44 | 262,144 | q8_0 | more VRAM headroom for `-np` |
 
 ![ncmoe sweep](assets/bench-ncmoe-sweep-en.svg)
 
@@ -87,8 +102,8 @@ llama-server \
 ├── README.md / README.en.md      ← 中文 / English homepages
 ├── assets/                       ← charts (SVG, zh + en)
 ├── docs/
-│   ├── deploy-log.zh.md          ← 完整实录（中文）
-│   ├── deploy-log.en.md          ← Full write-up (English)
+│   ├── deploy-log.zh.md          ← 完整实录（中文，11 sections）
+│   ├── deploy-log.en.md          ← Full write-up (English, 11 sections)
 │   ├── model-reference.md        ← Architecture, quants, engine, NVFP4 rationale
 │   └── porting-guide.md          ← Formulas + hardware lookup table
 ├── results/                      ← raw measurement outputs
@@ -97,9 +112,14 @@ llama-server \
 │   ├── long-context-and-384.txt
 │   ├── mtp-draft-acceptance.txt
 │   ├── vram-ledger-8192.txt
-│   └── oom-evidence-ncmoe40-ctx256k.txt
+│   ├── oom-evidence-ncmoe40-ctx256k.txt
+│   ├── kv-quant-ab.txt           ← KV quantization A/B (+3.4%)
+│   ├── needle-accuracy.txt       ← long-context retrieval (12/12)
+│   └── engine-build-ab.txt       ← engine build A/B (no gain)
 ├── tools/
-│   └── bench_single_instance.py  ← single-instance benchmark driver (any GGUF)
+│   ├── bench_single_instance.py  ← ncmoe sweep driver (single-instance discipline)
+│   ├── ab_bench.py               ← multi-round server benchmark (median-of-N)
+│   └── needle_test.py            ← long-context retrieval accuracy test
 └── LICENSE
 ```
 
@@ -111,14 +131,21 @@ A: Three reasons: ① **no NVFP4 quant exists** for this model (full enumeration
 **Q: Why llama.cpp and not vLLM / TensorRT-LLM?**
 A: Only llama.cpp offers `--n-cpu-moe` (per-layer control of which experts stay in RAM) plus mmap demand paging — the two prerequisites for running an 88 GiB model on 24 GB VRAM. See [model-reference §2.5](./docs/model-reference.md).
 
+**Q: Does KV quantization (`-ctk/-ctv q8_0`) hurt quality?**
+A: **No measurable loss here.** Nine-needle randomized test across a 9.7k-token document: f16 and q8_0 both scored **12/12** ([raw data](./results/needle-accuracy.txt)). And the 4 GiB it frees buys 4 more expert layers — worth **+3.4–5%** generation. q4_0 also passed accuracy but was **not faster**, so it isn't worth the extra risk.
+
+**Q: Will a newer llama.cpp build be faster?**
+A: **No.** Builds b10840 and b10889 were statistically indistinguishable in llama-bench (r=3 and r=5) and at the production config (6-round medians: 21.34 vs 20.86 tok/s) — [raw data](./results/engine-build-ab.txt). Generation here is **memory-bandwidth bound**; engine upgrades optimize the **compute** path. The counterexample is a small model with NVFP4 fully resident in VRAM — compute-bound, where kernel upgrades do pay off.
+
 **Q: How large a context can I run? What about on a 24 GB card like yours?**
 A: Use the formula in the [porting guide](./docs/porting-guide.md): `VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + compute buffer`.
 
-| Context | ncmoe | Measured generation |
-|---|---:|---|
-| 32K | 32 | 21.7 tok/s |
-| 64K | 34 | 24.6–28.2 tok/s |
-| **256K (full)** | **42** | **23.4 tok/s** |
+| Context | ncmoe | KV | Measured generation |
+|---|---:|---|---|
+| 32K | 32 | f16 | 21.7 tok/s |
+| 64K | 34 | f16 | 24.6–28.2 tok/s |
+| **256K (full)** | **38** | **q8_0** | **22.1–25.3 tok/s** |
+| 256K (full, no KV quant) | 42 | f16 | 21.3 tok/s |
 
 **A 24 GB card can still reach the full 256K** — each doubling of context costs 2 more expert layers handed back to RAM (a small speed drop, still above 23 tok/s).
 On a **32 GB card** (e.g. desktop 5090), the formula suggests ncmoe 34–36 with 256K at an **estimated** 26–30 tok/s (not measured).
@@ -143,7 +170,7 @@ A: Single instance peaks at 82–96%, stable. The real risk is running **multipl
 | GPU | RTX 5090 **Laptop** GPU, 24 GB VRAM (24435 MiB reported), compute capability **12.0 (sm_120)** |
 | RAM | 64 GB |
 | Storage | NVMe SSD (model: 88.03 GiB ≈ 94.5 GB) |
-| Engine | llama.cpp (Unsloth `b10840-mix-d5c17a0`, `cuda12-portable` build) + manually added CUDA 12.8 runtime DLLs |
+| Engine | llama.cpp (Unsloth `b10840-mix-d5c17a0`, `cuda12-portable` build) + manually added CUDA 12.8 runtime DLLs. Build b10889 also tested — no throughput gain (see [results/engine-build-ab.txt](./results/engine-build-ab.txt)) |
 | Model | Qwen3.8-Flash-Next GGUF, 176.9B total params (incl. a 51.2B N-gram table) |
 
 ## Key takeaways
@@ -151,8 +178,10 @@ A: Single instance peaks at 82–96%, stable. The real risk is running **multipl
 1. **Layout beats bit-width.** Whether the 35.76 GiB N-gram table gets its own shard decides if the approach is viable on this machine;
 2. **Guard against two silent failures** — a missing CUDA runtime silently falls back to CPU; VRAM overflow silently spills over PCIe (30× slower, no error);
 3. **MoE + CPU-resident experts = speculative decoding is a net loss** — verification batches read the union of activated experts, amplifying memory traffic;
-4. **The KV cache is surprisingly small** (only 33 KiB per token) → give VRAM to context and hand experts back to RAM;
-5. **`--n-cpu-moe` is the one knob**, and it has a cliff (28 layers collapses in this case).
+4. **The KV cache is surprisingly small** (only 33 KiB per token) → give VRAM to context; and it can be **quantized** too, trading cache precision for more expert layers on the GPU — a free speedup;
+5. **`--n-cpu-moe` is the one knob**, and it has a cliff (28 layers collapses in this case);
+6. **Engine upgrades don't help** — generation is bandwidth-bound; newer kernels optimize compute (measured: no gain);
+7. **Benchmark with median-of-N** — the first responses after startup are consistently slower; single-shot numbers mislead.
 
 ## Disclaimer
 
