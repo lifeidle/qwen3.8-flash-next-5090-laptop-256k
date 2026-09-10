@@ -2,6 +2,13 @@
 
 **中文** ｜ [English homepage →](./README.en.md)
 
+![GPU](https://img.shields.io/badge/GPU-RTX%205090%20Laptop-76B900?style=flat-square&logo=nvidia&logoColor=white)
+![VRAM](https://img.shields.io/badge/VRAM-24%20GB-0969da?style=flat-square)
+![RAM](https://img.shields.io/badge/RAM-64%20GB-0969da?style=flat-square)
+![Context](https://img.shields.io/badge/context-256K-2ea44f?style=flat-square)
+![Speed](https://img.shields.io/badge/speed-23.4%20tok%2Fs-8250df?style=flat-square)
+![Quant](https://img.shields.io/badge/quant-AD--4.27bpw-bf8700?style=flat-square)
+
 **中文**：一台 RTX 5090 笔记本（24G 显存）+ 64G 内存，跑通 Qwen3.8-Flash-Next 177B 的 GGUF 量化版：**256K 上下文、23–28 tok/s**，以及完整的选型、踩坑与调优记录。
 **English**: Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — **256K context at 23–28 tok/s**, with the full story of quant selection, pitfalls, and tuning.
 
@@ -15,12 +22,32 @@
 
 ---
 
+## 成果一览 / Results at a glance
+
+| 指标 / Metric | 最终 / Final |
+|---|---|
+| 生成速度 Generation | **21.7 / 24.6–28.2 / 23.4 tok/s**（32K / 64K / 256K） |
+| 上下文 Context | **256K = 262,144 tokens**（模型全长 / full length） |
+| 显存占用 VRAM | 21.6–21.9 / 24 GiB |
+| 单实例内存峰值 RAM peak | 82–96% |
+| 量化 Quant | AD-4.27bpw（主力）/ AD-3.84bpw（速度备选） |
+
+![上下文档位实测](assets/context-tier.svg)
+
+<sub>参照：社区同配置反馈约 11 tok/s（非本机实测）</sub>
+
+## 三层内存分配 / Three-tier split
+
+整套方案的核心：**按访问模式分配存储**，而不是一味往显存塞。
+
+![三层内存分配](assets/three-tier.svg)
+
 ## 量化选型结果 / Quant selection
 
 **决定性筛除条件不是位宽，而是分片布局**——N-gram 表（35.76 GiB）是否独占分片：
 
 | 量化版本 | 大小 | 分片布局 | 本机实测 | 判定 |
-|---|---|---|---|---|
+|---|---|---:|---|---|
 | ⭐ **AtomicChat AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 片 | ✅ 表独占分片 | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** | ✅ **选定 · 主力** |
 | AtomicChat AD-3.84bpw-IQ4_XS-M64 | 79.10 GiB / 28 片 | ✅ 表独占分片 | 同档 **+5~9.5%**（64K 热态 28.24 tok/s） | ⚠️ 速度备选（主体 ≈2.92bpw，质量无数据） |
 | AtomicChat AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 片 | ✅ 表独占分片（表 50.66 GiB） | 未测 | ⚠️ 未选：表更大，SSD 读压力上升 |
@@ -31,17 +58,6 @@
 > [!TIP]
 > **最终选择：AtomicChat AD-4.27bpw-Q4_K_M-M64**
 > 在"表独占分片"这一唯一可行布局里，只有它同时满足：① 有公开质量数据（**KLD 0.0842 / Top-1 89.49%**）；② 主体 **3.57 bpw** 位于"速度 vs 质量"的平衡点。
-
-## 成果一览 / Results at a glance
-
-| 指标 / Metric | 最终 / Final |
-|---|---|
-| 生成速度 Generation | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** |
-| 上下文 Context | **256K = 262,144 tokens（模型全长 / full model length）** |
-| 显存占用 VRAM | 21.6–21.9 / 24 GiB（按档位 / per config） |
-| 单实例内存峰值 RAM peak | 82–96%（稳定，无失控 / stable） |
-
-> 参照：社区同配置反馈约 **11 tok/s**（非本机实测）。
 
 ## 最终配置 / Final config
 
@@ -55,19 +71,23 @@ llama-server \
 ```
 
 | 需求 Need | ncmoe | ctx | 实测 Measured |
-|---|---|---|---|
-| 极速 Speed-first | 34 | 65536 | 24.6–28.2 tok/s |
-| **均衡 Balanced（推荐）** | **42** | **262144** | **23.4 tok/s** |
-| 多会话 Multi-slot | 48 | 262144 | 17.7–22.5 tok/s |
+|---|---:|---:|---|
+| 极速 Speed-first | 34 | 65,536 | 24.6–28.2 tok/s |
+| **均衡 Balanced（推荐）** | **42** | **262,144** | **23.4 tok/s** |
+| 多会话 Multi-slot | 48 | 262,144 | 17.7–22.5 tok/s |
+
+![ncmoe 扫描](assets/bench-ncmoe-sweep.svg)
+
+<sub>`--n-cpu-moe` 是本方案唯一的旋钮，且存在悬崖：28 层时显存溢出，生成速度从 26.9 掉到 4.7 tok/s。</sub>
 
 > 跷跷板规律 / The see-saw rule：**每 +2 层专家回内存 ≈ 腾出 2.06 GiB 显存 ≈ 上下文翻一倍**
-> Moving 2 expert layers back to RAM frees ≈2.06 GiB VRAM ≈ doubles the context window.
 
 ## 目录 / Repository layout
 
 ```
 ├── README.md                     ← 本页 / this page
 ├── README.en.md                  ← English homepage
+├── assets/                       ← 图表 / charts (SVG)
 ├── docs/
 │   ├── deploy-log.zh.md          ← 完整实录（中文，十节）
 │   ├── deploy-log.en.md          ← Full write-up (English)
@@ -95,10 +115,9 @@ A: 只有 llama.cpp 提供 `--n-cpu-moe` 这种**按层把专家留在内存**�
 
 **Q: 上下文最多能开多大？我这台 24G 显存的机器能开多少？**
 A: 用 [移植指南](./docs/porting-guide.md) 的公式自己算：`VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + 计算缓冲`。
-**本机 24G 显存（RTX 5090 Laptop）的实测结果**：
 
-| 上下文 | ncmoe | 实测生成速度 |
-|---|---|---|
+| 上下文 Context | ncmoe | 实测生成 Measured |
+|---|---:|---|
 | 32K | 32 | 21.7 tok/s |
 | 64K | 34 | 24.6~28.2 tok/s |
 | **256K（模型全长）** | **42** | **23.4 tok/s** |
@@ -128,7 +147,7 @@ A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是�
 
 | 项目 Item | 规格 Spec |
 |---|---|
-| GPU | RTX 5090 **Laptop** GPU，24 GB 显存（24435 MiB 可见 / reported），compute capability **12.0 (sm_120)** |
+| GPU | RTX 5090 **Laptop** GPU，24 GB 显存（24435 MiB 可见），compute capability **12.0 (sm_120)** |
 | 内存 RAM | 64 GB |
 | 存储 Storage | NVMe SSD（模型 88.03 GiB ≈ 94.5 GB） |
 | 引擎 Engine | llama.cpp（Unsloth `b10840-mix-d5c17a0`，`cuda12-portable` 构建）+ 补装的 CUDA 12.8 运行时 DLL |
@@ -147,10 +166,6 @@ A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是�
 - 所有数据均为**单机实测**，硬件/驱动/构建版本不同结果会有差异；
 - 模型权重与量化文件版权归各自发布方；
 - 测试脚本会**自动结束 llama-server 进程**，请勿在有其他推理服务运行时使用。
-
-- All numbers are **measured on one machine**; your mileage may vary with driver/build versions;
-- Model weights belong to their respective publishers — this repo only documents deployment methodology;
-- The benchmark script **kills `llama-server` processes**; do not run it while other inference services are active.
 
 ## License
 
