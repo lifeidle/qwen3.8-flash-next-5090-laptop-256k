@@ -73,8 +73,18 @@ A: 三个层次：① **这个模型没有 NVFP4 版本**（两个发布方共 1
 **Q: 为什么用 llama.cpp，不用 vLLM / TensorRT-LLM？**
 A: 只有 llama.cpp 提供 `--n-cpu-moe` 这种**按层把专家留在内存**的精细控制，以及 mmap 分片按需分页——这两点是 24G 显存跑 88 GiB 模型的前提。详见 [model-reference §2.5](./docs/model-reference.md)。
 
-**Q: 上下文怎么算？我 32G 显存能开多大？**
-A: 用 [移植指南](./docs/porting-guide.md) 的公式：`VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + 计算缓冲`。32G 卡大约可停在 ncmoe 34~36 + 256K。
+**Q: 上下文最多能开多大？我这台 24G 显存的机器能开多少？**
+A: 用 [移植指南](./docs/porting-guide.md) 的公式自己算：`VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + 计算缓冲`。
+**本机 24G 显存（RTX 5090 Laptop）的实测结果**：
+
+| 上下文 | ncmoe | 实测生成速度 |
+|---|---|---|
+| 32K | 32 | 21.7 tok/s |
+| 64K | 34 | 24.6~28.2 tok/s |
+| **256K（模型全长）** | **42** | **23.4 tok/s** |
+
+一句话结论：**24G 显存也能把 256K 开满**，代价是每多要一倍上下文，就要多还 2 层专家到内存（速度略降但仍在 23 tok/s 以上）。
+若你是 **32G 显存**（如台式 5090），按公式可停在 ncmoe 34~36 + 256K，速度**推算** 26~30 tok/s（未实测）。
 
 **Q: 生成速度还能再快吗？**
 A: 两条路：① 换更小的主体量化（AD-3.84bpw，实测 +5~9.5%）；② 增加显存、让更多专家层进显存（每多 2 层约 +1~3%）。MTP 投机解码在这类"专家驻留内存"的配置下是**负收益**，不要开。
@@ -100,7 +110,7 @@ A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是�
 |---|---|
 | GPU | RTX 5090 **Laptop** GPU，24 GB 显存（24435 MiB 可见 / reported），compute capability **12.0 (sm_120)** |
 | 内存 RAM | 64 GB |
-| 存储 Storage | NVMe SSD（模型约 88 GB / model ≈ 88 GB） |
+| 存储 Storage | NVMe SSD（模型 88.03 GiB ≈ 94.5 GB / model 88.03 GiB） |
 | 引擎 Engine | llama.cpp（Unsloth `b10840-mix-d5c17a0`，`cuda12-portable` 构建）+ 补装的 CUDA 12.8 运行时 DLL |
 | 模型 Model | Qwen3.8-Flash-Next GGUF，总参数 176.9B（含 51.2B N-gram 表） |
 
