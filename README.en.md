@@ -75,7 +75,7 @@ llama-server \
 |---|---|
 | GPU | RTX 5090 **Laptop** GPU, 24 GB VRAM (24435 MiB reported), compute capability **12.0 (sm_120)** |
 | RAM | 64 GB |
-| Storage | NVMe SSD (model ≈ 88 GB) |
+| Storage | NVMe SSD (model: 88.03 GiB ≈ 94.5 GB) |
 | Engine | llama.cpp (Unsloth `b10840-mix-d5c17a0`, `cuda12-portable` build) + manually added CUDA 12.8 runtime DLLs |
 | Model | Qwen3.8-Flash-Next GGUF, 176.9B total params (incl. a 51.2B N-gram table) |
 
@@ -95,8 +95,18 @@ A: Three reasons: ① **no NVFP4 quant exists** for this model (full enumeration
 **Q: Why llama.cpp and not vLLM / TensorRT-LLM?**
 A: Only llama.cpp offers `--n-cpu-moe` (per-layer control of which experts stay in RAM) plus mmap demand paging — the two prerequisites for running an 88 GiB model on 24 GB VRAM. See [model-reference §2.5](./docs/model-reference.md).
 
-**Q: How large a context can I run on my GPU?**
-A: Use the formula in the [porting guide](./docs/porting-guide.md): `VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + compute buffer`. On a 32 GB card, roughly ncmoe 34–36 with 256K.
+**Q: How large a context can I run? What about on a 24 GB card like yours?**
+A: Use the formula in the [porting guide](./docs/porting-guide.md): `VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + compute buffer`.
+**Measured on this 24 GB card (RTX 5090 Laptop):**
+
+| Context | ncmoe | Measured generation |
+|---|---|---|
+| 32K | 32 | 21.7 tok/s |
+| 64K | 34 | 24.6–28.2 tok/s |
+| **256K (full)** | **42** | **23.4 tok/s** |
+
+Bottom line: **a 24 GB card can still reach the full 256K** — each doubling of context costs 2 more expert layers handed back to RAM (a small speed drop, but still above 23 tok/s).
+On a **32 GB card** (e.g. desktop 5090), the formula suggests ncmoe 34–36 with 256K at an **estimated** 26–30 tok/s (not measured).
 
 **Q: Can generation go faster?**
 A: Two levers: ① a smaller body quant (AD-3.84bpw, measured +5–9.5%); ② more VRAM so more expert layers fit (≈+1–3% per 2 layers). MTP speculative decoding is a **net loss** in this "experts live in RAM" configuration — leave it off.
