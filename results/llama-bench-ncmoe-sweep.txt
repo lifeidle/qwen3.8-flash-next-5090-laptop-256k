@@ -1,0 +1,25 @@
+llama-bench 原始输出 / raw output
+命令 / command: llama-bench -m <model> -ngl 99 -fa on -p 512 -n 128 -r 1 -ncmoe 44,40,36,34,32,28
+硬件 / hardware: RTX 5090 Laptop 24GB + 64GB RAM (单进程 / single process)
+=========================================================================
+ggml_cuda_init: found 1 CUDA devices (Total VRAM: 24435 MiB):
+  Device 0: NVIDIA GeForce RTX 5090 Laptop GPU, compute capability 12.0, VMM: yes, VRAM: 24435 MiB
+load_backend: loaded CUDA backend from D:\llama.cpp\ggml-cuda.dll
+load_backend: loaded RPC backend from D:\llama.cpp\ggml-rpc.dll
+load_backend: loaded CPU backend from D:\llama.cpp\ggml-cpu-alderlake.dll
+| model                          |       size |     params | backend    | ngl |  n_cpu_moe |  fa |            test |                  t/s |
+| ------------------------------ | ---------: | ---------: | ---------- | --: | ---------: | --: | --------------: | -------------------: |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         44 |   1 |           pp512 |         53.52 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         44 |   1 |           tg128 |         22.57 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         40 |   1 |           pp512 |         92.30 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         40 |   1 |           tg128 |         24.99 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         36 |   1 |           pp512 |         79.37 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         36 |   1 |           tg128 |         17.78 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         34 |   1 |           pp512 |         60.15 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         34 |   1 |           tg128 |         24.89 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         32 |   1 |           pp512 |         55.73 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         32 |   1 |           tg128 |         26.88 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         28 |   1 |           pp512 |         20.60 ± 0.00 |
+| qwen4exp A3B IQ2_S - 2.5 bpw   |  88.02 GiB |   176.94 B | CUDA       |  99 |         28 |   1 |           tg128 |          4.65 ± 0.00 |
+
+build: 58670d128 (10840)
