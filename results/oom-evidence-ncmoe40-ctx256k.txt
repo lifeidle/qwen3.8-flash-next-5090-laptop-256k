@@ -1,0 +1,17 @@
+256K 上下文 + ncmoe=40 的显存不足原始日志 / raw OOM logs
+原因: 预填充计算缓冲需要 1983.57 MiB，叠加模型与 KV 后超出显存；
+      ncmoe 提高到 42 即可（见 deploy-log 第七节）
+=========================================================================
+[AD-4.27bpw, ncmoe=40, ctx=262144]
+  0.11.776.542 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 1983.57 MiB on device 0: cudaMalloc failed: out of memory
+  0.11.776.553 E ggml_gallocr_reserve_n_impl: failed to allocate CUDA0 buffer of size 2079924608
+  0.11.776.555 E graph_reserve: failed to allocate compute buffers
+  0.11.828.591 E llama_init_from_model: failed to initialize the context: failed to allocate compute pp buffers
+  0.11.835.852 E srv  llama_server: exiting due to model loading error
+
+[AD-3.84bpw, ncmoe=40, ctx=262144]
+  0.09.651.735 E ggml_backend_cuda_buffer_type_alloc_buffer: allocating 1983.57 MiB on device 0: cudaMalloc failed: out of memory
+  0.09.651.743 E ggml_gallocr_reserve_n_impl: failed to allocate CUDA0 buffer of size 2079924608
+  0.09.651.747 E graph_reserve: failed to allocate compute buffers
+  0.09.708.712 E llama_init_from_model: failed to initialize the context: failed to allocate compute pp buffers
+  0.09.714.688 E srv  llama_server: exiting due to model loading error
