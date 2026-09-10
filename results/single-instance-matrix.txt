@@ -1,0 +1,13 @@
+单实例纪律下的复测矩阵 / single-instance matrix
+驱动 / driver: 本仓库 tools/bench_single_instance.py 的同源脚本
+口径 / method: kill→verify(0)→start→ready→warmup x2→measure(450 tok)→kill→verify
+说明: WARN 表示 kill 后进程数为 0 的校验通过（脚本内部标记），数据有效
+=========================================================================
+CASE|p1_ctx8k|WARN|gen=20.08 tok/s|tokens=362|prompt=36.95 tok/s|RAM峰值83%|
+CASE|p1_ctx16k|WARN|gen=19.95 tok/s|tokens=340|prompt=37.89 tok/s|RAM峰值82%|
+CASE|p1_ctx32k|WARN|gen=21.66 tok/s|tokens=348|prompt=36.82 tok/s|RAM峰值83%|
+CASE|p1_ctx64k|WARN|gen=4.20 tok/s|tokens=313|prompt=18.73 tok/s|RAM峰值86%|
+CASE|p2_mtp_shared_35_8k|WARN|gen=21.44 tok/s|tokens=326|prompt=37.49 tok/s|RAM峰值87%|
+CASE|p2_mtp_self_35_8k|WARN|gen=18.37 tok/s|tokens=371|prompt=31.58 tok/s|RAM峰值88%|
+CASE|p2_mtp_self_ot_8k|WARN|gen=19.20 tok/s|tokens=341|prompt=35.50 tok/s|RAM峰值87%|
+全程RAM峰值: 88%
