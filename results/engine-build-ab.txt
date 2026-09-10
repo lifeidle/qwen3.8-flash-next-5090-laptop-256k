@@ -1,0 +1,56 @@
+引擎构建 A/B：b10840 vs b10889（结论：无提升）
+Engine build A/B: b10840 vs b10889 (verdict: no gain)
+==============================================================================
+动机 / Motivation:
+  新构建 b10889 自带 CUDA 13 运行时（不必再手工补 DLL），且在更小的模型上
+  观察到明显收益，因此验证本机 177B 分层部署是否同样受益。
+
+  The newer build bundles its own CUDA 13 runtime and showed clear gains on a
+  smaller model, so we checked whether this setup benefits too.
+
+方法 / Method:
+  llama-bench，同参数、两构建背靠背各跑一轮（r=3 与 r=5 各一次）。
+  注意：llama-bench **不支持 `-c`**，只能用 -ncmoe 等参数对比；上下文的影响须在
+  服务端口径测（见 kv-quant-ab.txt）。
+
+第一轮 r=3 / Round 1 (r=3):
+------------------------------------------------------------------------------
+| ncmoe | 旧 b10840                    | 新 b10889                    |
+|-------|------------------------------|------------------------------|
+| 42    | pp 130.20 ± 15.17 / tg 23.76 ± 3.06 | pp 78.87 ± 8.49 / tg 23.43 ± 0.23 |
+| 34    | pp 117.75 ± 21.24 / tg 27.62 ± 2.42 | pp 86.75 ± 7.76 / tg 24.42 ± 0.25 |
+| 32    | pp 152.27 ± 13.42 / tg 30.10 ± 1.19 | pp 92.97 ± 7.44 / tg 25.75 ± 0.25 |
+
+第二轮 r=5 / Round 2 (r=5):
+------------------------------------------------------------------------------
+| ncmoe | 旧 b10840                    | 新 b10889                    |
+|-------|------------------------------|------------------------------|
+| 42    | pp 121.73 ± 23.02 / tg 24.11 ± 2.39 | pp 157.52 ± 24.35 / tg 26.02 ± 2.61 |
+| 34    | pp 158.51 ± 30.01 / tg 27.96 ± 4.46 | pp 84.24 ± 9.99 / tg 23.48 ± 1.25 |
+
+结论 / Verdict:
+  1. **生成速度（tg）在两构建间统计上不可区分** —— 各自的轮间标准差（±1~4）就
+     覆盖了两者的差异；两轮跑下来谁快谁慢还会互换。
+  2. 预填充（pp）波动极大（79~158 t/s，标准差最高 ±30），推测与 CUDA 12.8（旧，
+     手工补 DLL）vs CUDA 13（新，自带）的 cuBLAS 内核选择有关，但噪声过大无法定论。
+  3. 服务端口径（生产配置）同样持平：旧 21.34 vs 新 20.86 tok/s（中位数）。
+
+  Generation speed is statistically indistinguishable between builds; prefill
+  swings wildly on both (79–158 tok/s). At the production config the medians
+  are 21.34 (old) vs 20.86 (new) tok/s.
+
+  4. 新构建的实际价值在别处：自带 CUDA 13 运行时（免手工补 DLL）、模块化打包。
+
+为什么换引擎无效 / Why engine upgrades don't help here:
+  本机生成阶段受**内存带宽**限制（每 token 从内存读取激活的专家权重），
+  引擎升级优化的是**计算路径**。对照：小模型 + NVFP4 + 全权重驻留显存时是算力受限，
+  引擎/内核升级才有明显收益。
+
+  Generation here is memory-bandwidth bound; engine upgrades optimize the compute
+  path. For a small model fully resident in VRAM (e.g. NVFP4 on a 27B), the
+  workload is compute-bound and kernel upgrades do pay off.
+
+可复现 / Reproduce:
+  tools/ab_bench.py --server <build>/llama-server --model <model> \
+      --ncmoe 42 --ctx 262144 --rounds 6
+  （llama-bench 对比：`llama-bench -m <model> -ngl 99 -fa on -ncmoe 42,34,32 -r 5`）
