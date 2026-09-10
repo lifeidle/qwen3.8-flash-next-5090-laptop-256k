@@ -1,0 +1,9 @@
+长上下文三层分配 + AD-3.84bpw 对照 / long-context tiering and 3.84 comparison
+prefill 列为内置中文长 prompt（10,455 token）的预填充吞吐；大KV后gen = 建立长 KV 后的生成速度
+=========================================================================
+LC|C3_34_64k|OK|ncmoe=34 ctx=65536|gen=24.61 tok/s|tokens=318|prompt=36.14 tok/s|RAM峰值96%|prefill=139.0 tok/s(10455tok) 大KV后gen=26.88 tok/s|残留0
+LC|C2b_42_256k|OK|ncmoe=42 ctx=262144|gen=23.43 tok/s|tokens=338|prompt=31.29 tok/s|RAM峰值95%|prefill=111.0 tok/s(10455tok) 大KV后gen=22.81 tok/s|残留0
+LC|C1_48_256k|OK|ncmoe=48 ctx=262144|gen=17.67 tok/s|tokens=335|prompt=26.61 tok/s|RAM峰值94%|prefill=89.4 tok/s(10455tok) 大KV后gen=22.50 tok/s|残留0
+LC|T384b_34_32k|OK|ncmoe=34 ctx=32768|gen=25.13 tok/s|tokens=352|prompt=34.89 tok/s|RAM峰值79%|跳过|残留0
+LC|T384d_42_256k|OK|ncmoe=42 ctx=262144|gen=18.66 tok/s|tokens=307|prompt=30.18 tok/s|RAM峰值96%|prefill=104.7 tok/s(10455tok) 大KV后gen=24.97 tok/s|残留0
+LC|T384e_34_64k|OK|ncmoe=34 ctx=65536|gen=25.59 tok/s|tokens=317|prompt=35.67 tok/s|RAM峰值97%|prefill=131.9 tok/s(10455tok) 大KV后gen=28.24 tok/s|残留1
