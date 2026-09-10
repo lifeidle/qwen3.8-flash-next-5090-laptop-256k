@@ -246,35 +246,104 @@ Warm-state comparison: 3.84 is 5–9.5% faster — the right direction, but belo
 
 ---
 
-## 9. Results summary
+## 9. Another 3–5%: freeing VRAM from the KV cache
+
+The context is maxed out, but there is one more overlooked VRAM consumer: **the KV cache itself**.
+
+### 9.1 The idea: the cache does no compute, yet occupies the most expensive memory
+
+At the full 256K, the KV cache is 8.25 GiB (f16) — it participates in no matrix multiply, but it occupies the space expert layers want. Quantizing it to q8_0:
+
+```
+KV cache 8.25 GiB → ~4.13 GiB     frees 4.12 GiB
+4.12 GiB ÷ 1.03 GiB per layer ≈ 4 more expert layers fit in VRAM
+Fewer expert bytes read from RAM per token — exactly where generation binds
+```
+
+So `--n-cpu-moe` drops from 42 to **38**, and speed follows:
+
+| Config | ncmoe | Generation (median of 6) | Long-context retrieval |
+|---|---|---|---|
+| f16 KV (baseline) | 42 | 21.34 tok/s | 12/12 = 100% |
+| **q8_0 KV** ⭐ | **38** | **22.07 (+3.4%)** | **12/12 = 100%** |
+| q4_0 KV | 36 | 25.03 (long-answer mean; not faster) | 12/12 = 100% |
+
+![KV quantization gain](../assets/kv-quant-gain-en.svg)
+
+### 9.2 Accuracy validation: multi-trial randomized needle test
+
+Whether KV quantization hurts quality is not a matter of opinion — it needs a test:
+
+1. Plant 3 random facts at **random depths** (paragraphs 6–118) of a ~9,750-token Chinese document;
+2. Ask the model to recall all of them; 4 trials per server session;
+3. **Fix the random seed** so every configuration faces the *identical* needle set;
+4. `temperature=0`, and **check `finish_reason` on every response**.
+
+Result: f16 / q8_0 / q4_0 all scored a perfect **12/12**.
+
+**A lesson worth recording:** the first version of this test reported "f16 9/12, q8_0 2/3" — apparently proving KV quantization harms accuracy. It was an artifact of the test itself: a corrupted needle string, and answers **truncated** by `max_tokens=300` (the model did answer correctly — the last digit fell off the cut) and were scored as misses. After fixing, everything scored 12/12.
+
+> Lesson: always leave generous `max_tokens` and check `finish_reason` in long-context accuracy tests, or you will conclude the exact opposite of the truth.
+
+### 9.3 Where the limit is: q4_0 isn't worth it, ncmoe=38 is the safe line
+
+- **q4_0** frees another 2 GiB (2 more layers) but was **not faster** (25.03 vs 25.34 — inside the noise) while adding 4-bit KV risk → not worth it;
+- **ncmoe=37** leaves only 1.15 GiB of VRAM headroom, inviting the familiar random OOM → **38 is the safe line**.
+
+---
+
+## 10. Does a newer engine help? Measured: no
+
+The newer b10889 build bundles its own CUDA 13 runtime (no more manual DLL patching) and showed clear gains on a smaller model, so it was worth checking:
+
+| Config | Old b10840 | New b10889 |
+|---|---|---|
+| ncmoe=42 · r=3 | pp 130.2±15.2 ｜ tg 23.76±3.06 | pp 78.9±8.5 ｜ tg 23.43±0.23 |
+| ncmoe=42 · r=5 | pp 121.7±23.0 ｜ tg 24.11±2.39 | pp 157.5±24.4 ｜ tg 26.02±2.61 |
+| ncmoe=34 · r=5 | pp 158.5±30.0 ｜ tg 27.96±4.46 | pp 84.2±10.0 ｜ tg 23.48±1.25 |
+| Production config, median of 6 | **21.34 tok/s** | **20.86 tok/s** |
+
+**Verdict: statistically indistinguishable.** The difference between builds is smaller than each build's own run-to-run noise — across two rounds the ranking even flips. Prefill swings wildly on both (79–158 tok/s), plausibly related to cuBLAS kernel selection under CUDA 12.8 (old, hand-patched DLLs) vs CUDA 13 (new, bundled), but the noise is too large to conclude.
+
+**Why engine upgrades don't help here:** generation is **memory-bandwidth bound**, while engine upgrades optimize the **compute** path. The counterexample comes from a different model on the same machine: a small model with NVFP4 weights fully resident in VRAM is **compute-bound**, and there kernel upgrades pay off clearly. **The bottleneck type decides where to optimize.**
+
+The new build is still worth keeping — just not for speed: **no manual DLL patching, cleaner packaging**.
+
+---
+
+## 11. Results summary
 
 | Metric | Baseline | Final |
 |---|---|---|
-| Generation | ~11 tok/s (**community-reported** on comparable hardware, not measured here) | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** |
+| Generation | ~11 tok/s (**community-reported** on comparable hardware, not measured here) | **22.1–25.3 tok/s** (256K full, q8_0 KV, multi-round median 22.07) |
 | Usable context | 8K (default) | **256K = 262,144 (full model length)** |
 | Quant | — | AD-4.27bpw (primary) / AD-3.84bpw (speed option) |
+| KV cache | f16 | **q8_0** (frees 4 GiB → 4 more expert layers in VRAM → +3.4–5%, accuracy verified) |
 | Engine | — | llama.cpp (Unsloth b10840-mix, sm_120) + CUDA 12.8 runtime DLLs |
 | Stability | — | single instance, RAM peak 82–96%, no runaway |
 
-Launch command (balanced):
+Launch command (balanced / final):
 
 ```
-llama-server -m <model> -ngl 99 --n-cpu-moe 42 -fa on -fit off \
-  -c 262144 -np 1 --jinja --no-warmup
+llama-server -m <model> -ngl 99 --n-cpu-moe 38 -fa on -fit off \
+  -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --no-warmup
 ```
 
 ---
 
-## 10. Reusable lessons
+## 12. Reusable lessons
 
 1. **Layout beats bit-width.** When the model exceeds RAM, check the GGUF shard structure (does the big weight table get its own shard?) before comparing quant levels;
 2. **Watch for two kinds of silent failure:** missing CUDA runtime → silent CPU fallback; VRAM overflow → silent PCIe spill. Countermeasures: verify `backend=CUDA` with a toy model, and set "Prefer No Sysmem Fallback" so overflow becomes an explicit error;
 3. **MoE + CPU-resident experts = speculative decoding is a net loss.** Verification batches read the union of activated experts, amplifying memory traffic. MTP only helps when everything is in VRAM;
-4. **KV is far smaller than you think.** With GQA plus hybrid attention (fixed recurrent state), context costs next to nothing — give VRAM to the KV cache;
-5. **The see-saw formula makes planning trivial:** 2 expert layers moved between VRAM and RAM ≈ 1 GiB ≈ 32K of context capacity;
-6. **Data hygiene:** multi-instance leakage invalidates whole benchmark rounds. Verify process counts on every start/stop, codify the driver, trust only warm-state numbers;
-7. **Mirror throttling is normal:** chunked resume + unlimited retry + long backoff beats switching sources;
-8. **Never skip sha256 verification** — download tools rename files and shards go missing silently; HuggingFace's LFS hashes are a free source of truth.
+4. **KV is far smaller than you think — and it can be quantized further.** With GQA plus hybrid attention, KV costs only 33 KiB/token; compressing it from f16 to q8_0 frees enough VRAM for 4 more expert layers → a free 3–5%;
+5. **The bottleneck type decides where to optimize.** When bandwidth-bound, newer engines and kernels change nothing (measured); only reading fewer bytes (smaller quant, more experts in VRAM) or faster memory helps;
+6. **The see-saw formula makes planning trivial:** 2 expert layers moved between VRAM and RAM ≈ 1 GiB ≈ 32K of context capacity;
+7. **Benchmark with median-of-N:** the first responses after startup are consistently slower; single-shot numbers mislead;
+8. **Guard your accuracy tests against yourself:** generous `max_tokens` + a `finish_reason` check, or a truncated answer will be scored as a miss; multiple randomized trials with a fixed seed make configs comparable;
+9. **Data hygiene:** multi-instance leakage invalidates whole benchmark rounds. Verify process counts on every start/stop, codify the driver, trust only warm-state numbers;
+10. **Mirror throttling is normal:** chunked resume + unlimited retry + long backoff beats switching sources;
+11. **Never skip sha256 verification** — download tools rename files and shards go missing silently; HuggingFace's LFS hashes are a free source of truth.
 
 ---
 
@@ -283,8 +352,9 @@ llama-server -m <model> -ngl 99 --n-cpu-moe 42 -fa on -fit off \
 | Parameter | Value | Notes |
 |---|---|---|
 | `-ngl 99` | all layers on GPU | per-tensor split is then decided by ncmoe |
-| `--n-cpu-moe N` | 32–48 | keep first N layers' experts on CPU; 32 = speed-first, 42 = 256K full context, 48 = multi-slot |
+| `--n-cpu-moe N` | 32–48 | keep first N layers' experts on CPU; 32 = speed-first, **38 = 256K + q8 KV (final)**, 42 = 256K + f16 KV, 48 = multi-slot |
 | `-fa on` | Flash Attention | required for long context |
+| `-ctk / -ctv q8_0` | KV cache quantization | frees 4 GiB for 4 expert layers (+3–5%), accuracy loss not measurable; set `f16` to disable |
 | `-fit off` | disable auto-fit | auto-fitting mis-measures on this architecture (worse with a draft head); manual control is more reliable |
 | `-c N` | 32768–262144 | KV costs only 33 KiB/token — be bold |
 | `--no-warmup` | skip startup warm-up | cold warm-up is very slow on large models; let the first request pay for it |
