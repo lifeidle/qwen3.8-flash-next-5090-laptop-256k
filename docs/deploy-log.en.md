@@ -250,8 +250,8 @@ Warm-state comparison: 3.84 is 5–9.5% faster — the right direction, but belo
 
 | Metric | Baseline | Final |
 |---|---|---|
-| Generation | ~11 tok/s | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** |
-| Usable context | 8K (default) | **262,144 (full model length)** |
+| Generation | ~11 tok/s (**community-reported** on comparable hardware, not measured here) | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** |
+| Usable context | 8K (default) | **256K = 262,144 (full model length)** |
 | Quant | — | AD-4.27bpw (primary) / AD-3.84bpw (speed option) |
 | Engine | — | llama.cpp (Unsloth b10840-mix, sm_120) + CUDA 12.8 runtime DLLs |
 | Stability | — | single instance, RAM peak 82–96%, no runaway |
