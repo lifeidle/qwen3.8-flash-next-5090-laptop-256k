@@ -1,0 +1,14 @@
+MTP 投机解码的草案接受率（从服务器日志提取）/ draft acceptance extracted from server logs
+接受率高不代表加速——见 deploy-log 第六节：MoE 验证批的专家并集放大了内存流量
+=========================================================================
+[shared 头, ncmoe=35, ctx=8192]
+  acceptance=62.8%   181 accepted /   288 generated   mean_len=2.26
+
+[self-contained 头, ncmoe=35, ctx=8192]
+  acceptance=58.8%   200 accepted /   340 generated   mean_len=2.18
+
+[self-contained + -ot 强制进显存, ctx=8192]
+  acceptance=49.7%   170 accepted /   342 generated   mean_len=1.99
+
+[shared 头, ncmoe=35, ctx=32768]
+  acceptance=59.9%   193 accepted /   322 generated   mean_len=2.20
