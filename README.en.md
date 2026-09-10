@@ -96,6 +96,34 @@ llama-server \
 
 > **The see-saw rule:** moving 2 expert layers back to RAM frees ≈2.06 GiB of VRAM ≈ doubles the context window.
 
+## Serving & usage
+
+```bash
+# 1) Launch (model loads in ~40-70 s; 88 GiB of weights stream into page cache)
+llama-server -m <first-shard>.gguf -ngl 99 --n-cpu-moe 38 -fa on -fit off \
+  -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --host 127.0.0.1 --port 8080
+
+# 2) Open http://127.0.0.1:8080 in a browser (built-in web UI),
+#    or point any OpenAI-compatible client at http://127.0.0.1:8080/v1
+#    API key and model name can be anything (no auth locally): sk-local / qwen3.8-flash-next
+
+# 3) Or call it from the command line
+curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
+  -d '{"messages":[{"role":"user","content":"hello"}],"max_tokens":200}'
+```
+
+Clients that work well: **Cherry Studio**, **Chatbox**, **Open WebUI** (chat); **Continue** / **Cline** (VS Code coding). Add `--mmproj` for vision (≈0.85 GiB extra VRAM).
+
+| What you'll see | Normal value |
+|---|---|
+| Startup time | 40–70 s |
+| First responses | 17–19 tok/s (warm-up — slower is expected) |
+| Sustained chat | **22–25 tok/s** |
+| System RAM usage | 90–96% (working set exceeding physical RAM is by design, not a fault) |
+| Long-document prefill | ~110 tok/s → ~90 s per 10k tokens; filling 256K takes ~40 min in theory |
+
+**Three rules:** ① **one instance only** — a second instance always overflows RAM and drops throughput to single digits; ② stop it when done (idle residency costs 22 GB of VRAM); ③ restart the process after any config change (arguments are read once at startup).
+
 ## Repository layout
 
 ```
