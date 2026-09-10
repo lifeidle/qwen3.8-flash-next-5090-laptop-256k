@@ -1,0 +1,62 @@
+长上下文召回精度测试（多轮随机化大海捞针）
+Long-context retrieval accuracy (multi-trial needle-in-a-haystack)
+==============================================================================
+方法 / Method:
+  在约 9,750 token 的中文长文档中，把 3 个随机事实埋在第 6~118 段的**随机深度**，
+  要求模型全部召回。同一服务器会话内跑 4 组（随机种子固定 = 20260910，
+  因此不同配置用到的是**完全相同的针组**，可直接对比）。
+  temperature=0；max_tokens=800；逐条检查 finish_reason 以排除截断假阴性。
+
+  3 random facts planted at random depths inside a ~9.75k-token Chinese document;
+  4 trials per session; fixed seed so every configuration faces the identical needles.
+  参考 tools/needle_test.py。
+
+测试组与结果 / Trials and results:
+------------------------------------------------------------------------------
+=== F16_ncmoe42 | ncmoe=42 | KV=f16 | 4 组 ===
+  组1（针深 [26, 52, 92]）: 命中 3/3  gen=22.92 tok/s  prefill=98.9 tok/s  漏=无
+  组2（针深 [7, 17, 111]）: 命中 3/3  gen=25.00 tok/s  prefill=109.5 tok/s  漏=无
+  组3（针深 [56, 86, 94]）: 命中 3/3  gen=24.71 tok/s  prefill=85.8 tok/s  漏=无
+  组4（针深 [17, 68, 101]）: 命中 3/3  gen=23.87 tok/s  prefill=119.8 tok/s  漏=无
+**总命中率: 12/12 = 100%**
+
+=== Q8_ncmoe38 | ncmoe=38 | KV=-ctk q8_0 -ctv q8_0 | 4 组 ===
+  组1（针深 [26, 52, 92]）: 命中 3/3  gen=24.07 tok/s  prefill=113.6 tok/s  漏=无
+  组2（针深 [7, 17, 111]）: 命中 3/3  gen=25.66 tok/s  prefill=115.2 tok/s  漏=无
+  组3（针深 [56, 86, 94]）: 命中 3/3  gen=25.48 tok/s  prefill=113.0 tok/s  漏=无
+  组4（针深 [17, 68, 101]）: 命中 3/3  gen=26.13 tok/s  prefill=114.0 tok/s  漏=无
+**总命中率: 12/12 = 100%**
+
+=== Q4_ncmoe36 | ncmoe=36 | KV=-ctk q4_0 -ctv q4_0 | 4 组 ===
+  组1（针深 [26, 52, 92]）: 命中 3/3  gen=25.40 tok/s  prefill=119.9 tok/s  漏=无
+  组2（针深 [7, 17, 111]）: 命中 3/3  gen=24.02 tok/s  prefill=125.4 tok/s  漏=无
+  组3（针深 [56, 86, 94]）: 命中 3/3  gen=24.36 tok/s  prefill=108.5 tok/s  漏=无
+  组4（针深 [17, 68, 101]）: 命中 3/3  gen=26.34 tok/s  prefill=120.9 tok/s  漏=无
+**总命中率: 12/12 = 100%**
+
+汇总 / Summary:
+------------------------------------------------------------------------------
+| 配置                    | 命中率     | 生成速度（4 组均值） |
+|-------------------------|-----------|---------------------|
+| f16 KV · ncmoe=42       | 12/12 100% | 24.13 tok/s         |
+| **q8_0 KV · ncmoe=38**  | **12/12 100%** | **25.34 tok/s（+5.0%）** |
+| q4_0 KV · ncmoe=36      | 12/12 100% | 25.03 tok/s（+3.7%） |
+
+结论 / Conclusion:
+  q8_0 KV 在生产配置取得 +3.4~5% 的速度提升，长上下文召回能力实测无损失。
+  q4_0 能再省 2 GiB 显存，但速度并未更快（25.03 vs 25.34，落在噪声内），
+  却承担 4 位 KV 的精度风险 → 不推荐。
+
+被作废的第一版测试 / Invalidated first run (留作教训 / kept as a lesson):
+------------------------------------------------------------------------------
+  第一版结果曾显示 f16 = 9/12、q8_0 = 2/3，看似「KV 量化损伤精度」。
+  实际原因是测试自身的缺陷：(a) 针里混入了一个损坏的人名；
+  (b) 回答被 max_tokens=300 截断（模型正确答出「蓝鲸-993」，第三个数字在截断处丢失），
+  被误判为「没找到」。修正后两个配置均为 12/12。
+  → 教训：长上下文精度测试**必须留足 max_tokens 并检查 finish_reason**。
+
+  The first version suggested KV quantization hurt accuracy (f16 9/12, q8 2/3).
+  Both were artifacts: a corrupted needle string, and answers truncated by
+  max_tokens=300 (the model did answer correctly; the last digit fell off the cut).
+  After fixing, every configuration scores 12/12.
+  → Lesson: always leave generous max_tokens and check finish_reason.
