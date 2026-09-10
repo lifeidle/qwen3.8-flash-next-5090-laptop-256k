@@ -5,6 +5,7 @@
 
 > 📄 **完整实录** → [中文](./docs/deploy-log.zh.md) ｜ [English](./docs/deploy-log.en.md)
 > 📊 **模型与量化参考** → [models & quants](./docs/model-reference.md)
+> 🔧 **移植到其他硬件** → [porting guide](./docs/porting-guide.md)
 > 🛠 **可复用测试工具** → [tools/](./tools/bench_single_instance.py)
 
 ---
@@ -46,11 +47,29 @@ llama-server \
 ├── docs/
 │   ├── deploy-log.zh.md          ← 完整实录（中文，十节）
 │   ├── deploy-log.en.md          ← Full write-up (English)
-│   └── model-reference.md        ← 候选量化对照、架构参数、引擎与运行时
+│   ├── model-reference.md        ← 候选量化对照、架构参数、引擎与运行时、为什么不用 NVFP4
+│   └── porting-guide.md          ← 移植公式与硬件对照表（算出你自己的 ncmoe / ctx）
 ├── tools/
 │   └── bench_single_instance.py  ← 单实例纪律的基准测试驱动（可复用于任意 GGUF）
 └── LICENSE
 ```
+
+## 常见问题 / FAQ
+
+**Q: 为什么不用 NVFP4？Blackwell 不是原生支持吗？**
+A: 三个层次：① **这个模型没有 NVFP4 版本**（两个发布方共 164 个文件全量枚举，无 FP4 量化）；② 生成的瓶颈是**内存带宽**不是算力——4 位浮点张量核加速的是矩阵乘法，帮不到"每 token 从内存读专家权重"；③ NVFP4 等效约 **4.5 bpw**，比现用的 3.57 bpw 主体**更大**，在内存受限场景反而更慢。详见 [model-reference §2.4](./docs/model-reference.md)。
+
+**Q: 为什么用 llama.cpp，不用 vLLM / TensorRT-LLM？**
+A: 只有 llama.cpp 提供 `--n-cpu-moe` 这种**按层把专家留在内存**的精细控制，以及 mmap 分片按需分页——这两点是 24G 显存跑 88 GiB 模型的前提。详见 [model-reference §2.5](./docs/model-reference.md)。
+
+**Q: 上下文怎么算？我 32G 显存能开多大？**
+A: 用 [移植指南](./docs/porting-guide.md) 的公式：`VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + 计算缓冲`。32G 卡大约可停在 ncmoe 34~36 + 256K。
+
+**Q: 生成速度还能再快吗？**
+A: 两条路：① 换更小的主体量化（AD-3.84bpw，实测 +5~9.5%）；② 增加显存、让更多专家层进显存（每多 2 层约 +1~3%）。MTP 投机解码在这类"专家驻留内存"的配置下是**负收益**，不要开。
+
+**Q: 会不会把内存撑爆？**
+A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是同时开多个 llama-server 实例**——每个要 13~16 GiB 显存，两个必爆。测试工具已内置单实例纪律。
 
 ## 适用场景 / Who this is for
 
