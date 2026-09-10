@@ -1,11 +1,14 @@
 # Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop — 24 GB VRAM + 64 GB RAM · 256K Context
 
+**中文** ｜ [English homepage →](./README.en.md)
+
 **中文**：一台 RTX 5090 笔记本（24G 显存）+ 64G 内存，跑通 Qwen3.8-Flash-Next 177B 的 GGUF 量化版：**256K 上下文、23–28 tok/s**，以及完整的选型、踩坑与调优记录。
 **English**: Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — **256K context at 23–28 tok/s**, with the full story of quant selection, pitfalls, and tuning.
 
 > 📄 **完整实录** → [中文](./docs/deploy-log.zh.md) ｜ [English](./docs/deploy-log.en.md)
 > 📊 **模型与量化参考** → [models & quants](./docs/model-reference.md)
 > 🔧 **移植到其他硬件** → [porting guide](./docs/porting-guide.md)
+> 🧪 **原始实测数据** → [results/](./results/README.md)
 > 🛠 **可复用测试工具** → [tools/](./tools/bench_single_instance.py)
 
 ---
@@ -44,11 +47,19 @@ llama-server \
 
 ```
 ├── README.md                     ← 本页 / this page
+├── README.en.md                  ← English homepage
 ├── docs/
 │   ├── deploy-log.zh.md          ← 完整实录（中文，十节）
 │   ├── deploy-log.en.md          ← Full write-up (English)
 │   ├── model-reference.md        ← 候选量化对照、架构参数、引擎与运行时、为什么不用 NVFP4
 │   └── porting-guide.md          ← 移植公式与硬件对照表（算出你自己的 ncmoe / ctx）
+├── results/                      ← 原始实测输出（可核对、可复现）
+│   ├── llama-bench-ncmoe-sweep.txt
+│   ├── single-instance-matrix.txt
+│   ├── long-context-and-384.txt
+│   ├── mtp-draft-acceptance.txt
+│   ├── vram-ledger-8192.txt
+│   └── oom-evidence-ncmoe40-ctx256k.txt
 ├── tools/
 │   └── bench_single_instance.py  ← 单实例纪律的基准测试驱动（可复用于任意 GGUF）
 └── LICENSE
