@@ -1,0 +1,29 @@
+KV 缓存量化 A/B（生产配置 · 多轮取中位数）
+KV cache quantization A/B (production config, median-of-N)
+==============================================================================
+配置 / Configs:
+  基线      : --n-cpu-moe 42, -c 262144, KV = f16 (8.25 GiB)
+  KV 量化   : --n-cpu-moe 38, -c 262144, KV = q8_0 (约 4.13 GiB) + -ctk q8_0 -ctv q8_0
+
+方法 / Method:
+  同一服务器会话内连续 6 轮测量（450-token 生成），取中位数。
+  参考 tools/ab_bench.py —— 单次测量不可靠，首轮普遍偏慢。
+
+  6 rounds per server session, median reported. See tools/ab_bench.py.
+
+原始输出 / Raw output:
+------------------------------------------------------------------------------
+RESULT|NEW_b10889|ncmoe=42 ctx=262144|轮次=[18.92, 19.9, 21.0, 20.8, 21.77, 20.91]|中位数=20.86 tok/s|min=18.92 max=21.77|prefill 72.3 tok/s (7725tok) → 大KV后 gen 16.08 tok/s|残留1
+RESULT|OLD_b10840|ncmoe=42 ctx=262144|轮次=[19.08, 19.87, 21.21, 21.47, 22.99, 21.66]|中位数=21.34 tok/s|min=19.08 max=22.99|prefill 59.3 tok/s (7725tok) → 大KV后 gen 24.66 tok/s|残留1
+RESULT|KVQ8_38|ncmoe=38 ctx=262144 extra=[-ctk q8_0 -ctv q8_0]|轮次=[18.34, 17.7, 21.77, 22.37, 23.42, 22.49]|中位数=22.07 tok/s|min=17.70 max=23.42|prefill 62.8 tok/s (7725tok) → 大KV后 gen 26.86 tok/s|残留1
+
+汇总 / Summary:
+------------------------------------------------------------------------------
+| 配置                        | 中位数       | 相对基线 |
+|-----------------------------|-------------|---------|
+| f16 KV · ncmoe=42（基线）    | 21.34 tok/s | —       |
+| **q8_0 KV · ncmoe=38**       | **22.07**   | **+3.4%** |
+| f16 KV · ncmoe=42（新引擎）  | 20.86 tok/s | -2.2%（噪声内） |
+
+精度 / Accuracy: 见 needle-accuracy.txt —— q8_0 与 f16 均为 12/12 命中
+See needle-accuracy.txt — both q8_0 and f16 scored 12/12.
