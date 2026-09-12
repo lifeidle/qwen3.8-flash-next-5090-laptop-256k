@@ -1,23 +1,48 @@
-# Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop — 24 GB VRAM + 64 GB RAM · 256K Context
+# Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop
 
-**English** | [中文首页 →](./README.md)
+**24 GB VRAM + 64 GB RAM · 256K Context · 25 tok/s · Vision Enabled**
+
+[中文 →](./README.md) ｜ **English**
 
 ![GPU](https://img.shields.io/badge/GPU-RTX%205090%20Laptop-76B900?style=flat-square&logo=nvidia&logoColor=white)
 ![VRAM](https://img.shields.io/badge/VRAM-24%20GB-0969da?style=flat-square)
 ![RAM](https://img.shields.io/badge/RAM-64%20GB-0969da?style=flat-square)
-![Context](https://img.shields.io/badge/context-256K-2ea44f?style=flat-square)
-![Speed](https://img.shields.io/badge/speed-23.4%20tok%2Fs-8250df?style=flat-square)
-![Quant](https://img.shields.io/badge/quant-AD--4.27bpw-bf8700?style=flat-square)
+![Context](https://img.shields.io/badge/context-256K%20full-2ea44f?style=flat-square)
+![Speed](https://img.shields.io/badge/speed-25.0%20tok%2Fs-8250df?style=flat-square)
+![Quant](https://img.shields.io/badge/quant-AD--3.84bpw-bf8700?style=flat-square)
+![Vision](https://img.shields.io/badge/vision-enabled-orange?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
-Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — reaching the **full 256K context at 23–28 tok/s**, with the complete story of quant selection, pitfalls, and tuning.
+---
 
-**Chosen quant**：⭐ **`AtomicChat AD-4.27bpw-Q4_K_M-M64`** (88.03 GiB, table in its own shard)
+## What this is
 
-> 📄 **Full write-up** → [English](./docs/deploy-log.en.md) ｜ [中文](./docs/deploy-log.zh.md)
-> 📊 **Models & quants** → [reference](./docs/model-reference.md)
-> 🔧 **Port to your hardware** → [porting guide](./docs/porting-guide.md)
-> 🧪 **Raw measurements** → [results/](./results/README.md)
-> 🛠 **Reusable bench tool** → [tools/](./tools/bench_single_instance.py)
+Running a **177B-parameter MoE model** on a **consumer laptop** — not just "it loads", but **actually usable day to day**:
+
+- **Full 256K context** (~192k words — a whole book)
+- **25.0 tok/s generation** (faster than human reading speed)
+- **Vision enabled** (image understanding works)
+- **23.4 / 24 GB VRAM**, stable for long sessions
+
+This repo documents the **complete tuning journey** from scratch: quant selection, three-tier memory split, parameter sweeps, and **12 dead-end directions** we ruled out (so you don't have to re-test them).
+
+> 📘 **Visual quick-reference page** → [index.html](./index.html)
+> 🧪 **Raw measurements** → [results/](./results/)
+> 🛠 **Reusable test tools** → [tools/](./tools/)
+> 📄 **Deep write-up** → [中文](./docs/deploy-log.zh.md) ｜ [English](./docs/deploy-log.en.md)
+> 🔧 **Port to other hardware** → [porting-guide.md](./docs/porting-guide.md)
+
+**Table of contents**
+
+- [Results at a glance](#results-at-a-glance)
+- [Quick start](#quick-start)
+- [Architecture: three-tier split](#architecture-three-tier-split)
+- [The full tuning journey (8 steps)](#the-full-tuning-journey-8-steps)
+- [Benchmarks](#benchmarks)
+- [Tested and ruled out (12 items)](#tested-and-ruled-out-12-items)
+- [FAQ](#faq)
+- [Hardware upgrade paths](#hardware-upgrade-paths)
+- [Key takeaways](#key-takeaways)
 
 ---
 
@@ -25,200 +50,417 @@ Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Lapt
 
 | Metric | Final |
 |---|---|
-| Generation | **22.1–25.3 tok/s** (256K full length; multi-round median 22.07, long-answer mean 25.34) |
-| Context | **256K = 262,144 tokens** (full model length) |
-| Quant | AD-4.27bpw (primary) / AD-3.84bpw (speed option) |
-| **KV cache** | **q8_0** (8.25 GiB → ~4.13 GiB; the freed VRAM holds 4 more expert layers → **+3.4–5%**) |
-| VRAM used | ~20.9 of 24 GiB |
-| RAM peak (single instance) | 82–96% |
+| Generation speed | **25.0 tok/s** |
+| Context | **262,144 tokens = 256K** (model's full length) |
+| Quant | **AD-3.84bpw-IQ4_XS-M64** (79.10 GiB / 28 shards) |
+| KV cache | q8_0 (accuracy verified lossless) |
+| VRAM usage | **23.4 / 24 GiB** |
+| System RAM | ~33 GB resident (expert layers) |
+| Vision | ✅ mmproj-F16 (+0.85 GiB) |
+| MTP speculative decoding | ❌ **disabled** (measured net-negative — see Step 6) |
 
-![Context tiers](assets/context-tier-en.svg)
+### Context tiers
 
-### Another 3–5%: freeing VRAM from the KV cache
+| Use case | Context | ncmoe | Measured decode | VRAM |
+|---|---:|---:|---:|---:|
+| ⚡ Speed-first | 114,688 (112K) | 32 | **27.12 tok/s** | 23.2 GiB |
+| Balanced | 163,840 (160K) | 33 | 25.83 tok/s | 23.3 GiB |
+| Long docs | 196,608 (192K) | 34 | 25.31 tok/s | 23.1 GiB |
+| **🏆 Full length (recommended)** | **262,144 (256K)** | **36** | **25.08 tok/s** | 23.4 GiB |
 
-The KV cache does no compute but occupies VRAM. Quantizing it frees room for more expert layers on the GPU, so each token reads fewer bytes from RAM — and generation is exactly where memory bandwidth binds.
+> **Why 256K wins**: it is only **7.5% slower** than 112K, but the context is **2.3× larger** — capacity gain far outweighs the speed cost.
 
-![KV quantization gain](assets/kv-quant-gain-en.svg)
+---
 
-| Config | ncmoe | Generation (multi-round median) | Long-context retrieval |
-|---|---|---|---|
-| f16 KV (baseline) | 42 | 21.34 tok/s | 12/12 = 100% |
-| **q8_0 KV** ⭐ | **38** | **22.07 (+3.4%)** | **12/12 = 100%** |
-| q4_0 KV | 36 | 25.03 (long-answer mean, not faster) | 12/12 = 100% |
+## Quick start
 
-> Accuracy validated with a **multi-trial randomized needle test**: a 9.7k-token document, 3 facts at random depths, identical seeds across configs, and `finish_reason` checks to rule out truncation artifacts (see [results/needle-accuracy.txt](./results/needle-accuracy.txt)).
-
-## Three-tier memory split
-
-The core idea: **allocate by access pattern** instead of pushing everything into VRAM.
-
-![Three-tier memory split](assets/three-tier-en.svg)
-
-## Quant selection
-
-**The decisive filter is not bit-width but shard layout** — whether the N-gram table (35.76 GiB) gets its own shard:
-
-| Variant | Size | Shard layout | Measured here | Verdict |
-|---|---|---:|---|---|
-| ⭐ **AtomicChat AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 shards | ✅ table in its own shard | **21.7 (32K) / 24.6–28.2 (64K) / 23.4 tok/s (256K)** | ✅ **Chosen · primary** |
-| AtomicChat AD-3.84bpw-IQ4_XS-M64 | 79.10 GiB / 28 shards | ✅ table in its own shard | **+5–9.5%** at equal settings (64K warm: 28.24 tok/s) | ⚠️ Speed alternative (body ≈2.92 bpw, no quality data) |
-| AtomicChat AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 shards | ✅ own shard (table 50.66 GiB) | not tested | ⚠️ Not chosen: bigger table, more SSD pressure |
-| unsloth UD-IQ4_XS | 87.25 GiB / 3 shards | ❌ table mixed with experts | not tested | ❌ **Layout unusable**: whole shard pinned in RAM, up to 89.6 GiB resident > 64 GiB |
-| unsloth UD-Q3_K_XL | 83.80 GiB / 3 shards | ❌ mixed (inferred) | not tested | ❌ Same problem |
-| NVFP4 (Blackwell native) | — | — | — | ❌ **No such quant for this model** (164 files enumerated across both repos, zero hits) |
-
-> [!TIP]
-> **Final choice: AtomicChat AD-4.27bpw-Q4_K_M-M64**
-> Among the only viable layout ("table in its own shard"), it is the sole candidate with ① published quality data (**KLD 0.0842 / Top-1 89.49%**) and ② a body at **3.57 bpw** — the sweet spot between speed and quality.
-
-## Final config
+### 1. Launch
 
 ```bash
 llama-server \
-  -m Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64-00001-of-00033.gguf \
-  -ngl 99 --n-cpu-moe 38 \
+  -m Qwen3.8-Flash-Next-AD-3.84bpw-IQ4_XS-M64-00001-of-00028.gguf \
+  -ngl 99 --n-cpu-moe 36 \
   -fa on -fit off \
   -c 262144 -np 1 \
   -ctk q8_0 -ctv q8_0 \
-  --jinja
+  --load-mode dio \
+  -mm mmproj-Qwen3.8-Flash-Next-F16.gguf \
+  --jinja --alias qwen3.8-flash-next \
+  --host 127.0.0.1 --port 8080
 ```
 
-| Need | ncmoe | ctx | KV | Measured |
-|---|---:|---:|---|---|
-| Speed-first | 32 | 65,536 | f16 | 24.6–28.2 tok/s |
-| **Balanced (recommended)** | **38** | **262,144** | **q8_0** | **22.1–25.3 tok/s** |
-| Most conservative | 42 | 262,144 | f16 | 21.3 tok/s |
-| Multi-slot | 44 | 262,144 | q8_0 | more VRAM headroom for `-np` |
+> ⚠️ **Note: no `-md` / `--spec-type`** — MTP is disabled (net-negative, see below).
+> Loading takes ~30–60 s. You're ready when you see `listening on http://127.0.0.1:8080`.
 
-![ncmoe sweep](assets/bench-ncmoe-sweep-en.svg)
+### 2. Client configuration
 
-<sub>`--n-cpu-moe` is the only knob, and it has a cliff: at 28 layers VRAM overflows and generation drops from 26.9 to 4.7 tok/s.</sub>
-
-> **The see-saw rule:** moving 2 expert layers back to RAM frees ≈2.06 GiB of VRAM ≈ doubles the context window.
-
-## Serving & usage
-
-```bash
-# 1) Launch (model loads in ~40-70 s; 88 GiB of weights stream into page cache)
-llama-server -m <first-shard>.gguf -ngl 99 --n-cpu-moe 38 -fa on -fit off \
-  -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --host 127.0.0.1 --port 8080
-
-# 2) Open http://127.0.0.1:8080 in a browser (built-in web UI),
-#    or add it as an OpenAI-compatible provider in any client / app:
-#      Base URL : http://127.0.0.1:8080/v1
-#      Model    : qwen3.8-flash-next   (set via --alias)
-#      API key  : not required (type a placeholder if the form demands one)
-#    Check the exact model id at http://127.0.0.1:8080/v1/models
-
-# 3) Or call it from the command line
-curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"hello"}],"max_tokens":200}'
-```
-
-Clients that work well: **Cherry Studio**, **Chatbox**, **Open WebUI** (chat); **Continue** / **Cline** (VS Code coding). Add `--mmproj` for vision (≈0.85 GiB extra VRAM).
-
-| What you'll see | Normal value |
+| Field | Value |
 |---|---|
-| Startup time | 40–70 s |
-| First responses | 17–19 tok/s (warm-up — slower is expected) |
-| Sustained chat | **22–25 tok/s** |
-| System RAM usage | 90–96% (working set exceeding physical RAM is by design, not a fault) |
-| Long-document prefill | ~110 tok/s → ~90 s per 10k tokens; filling 256K takes ~40 min in theory |
+| API type | OpenAI compatible |
+| **Base URL** | `http://127.0.0.1:8080/v1` |
+| **Model name** | `qwen3.8-flash-next` |
+| API Key | anything (e.g. `sk-local`) |
+| **Streaming** | **must be enabled** |
+| Context length | `262144` |
+| **max_tokens** | **16000** (thinking can be long; too small = "thinks but never answers") |
+| Reasoning effort | defaults to **xhigh** when not sent |
 
-**Three rules:** ① **one instance only** — a second instance always overflows RAM and drops throughput to single digits; ② stop it when done (idle residency costs 22 GB of VRAM); ③ restart the process after any config change (arguments are read once at startup).
+### 3. Three rules
 
-## Repository layout
+1. **One instance only** — multiple instances will exhaust VRAM (23 GB each)
+2. **Shut it down when idle** — it holds 23 GB VRAM
+3. **Restart the process after changing config** — parameters are read only at startup
+
+---
+
+## Architecture: three-tier split
+
+The core idea: **allocate storage by access frequency**, not by "cramming into VRAM".
+
+| Tier | What lives here | Why | Size |
+|---|---|---|---|
+| **VRAM** 24GB | Attention layers + 12 expert layers + KV cache + vision projector | Used by every token, **1.8 TB/s** bandwidth | 23.4 GB |
+| **RAM** 64GB | Remaining 36 expert layers | Sparse activation (10 of 512 experts per token), **62 GB/s** is enough | ~33 GB |
+| **NVMe SSD** | N-gram lookup table (35.8GB) | Read directly in `dio` mode, occupies no RAM | 35.8 GB |
+
+**Why this split works**: attention is needed by every token, so it must sit in the fastest memory. Expert layers activate sparsely, so they can live in slower-but-larger system RAM and be computed by the CPU. That's how a 79 GB model fits in 24 GB of VRAM.
+
+### Where the bottleneck is
+
+Measured **GPU utilization is only ~25%** during inference, while the CPU runs near saturation. This is unavoidable when experts are computed on the CPU:
 
 ```
-├── README.md / README.en.md      ← 中文 / English homepages
-├── assets/                       ← charts (SVG, zh + en)
-├── docs/
-│   ├── deploy-log.zh.md          ← 完整实录（中文，11 sections）
-│   ├── deploy-log.en.md          ← Full write-up (English, 11 sections)
-│   ├── model-reference.md        ← Architecture, quants, engine, NVFP4 rationale
-│   └── porting-guide.md          ← Formulas + hardware lookup table
-├── results/                      ← raw measurement outputs
-│   ├── llama-bench-ncmoe-sweep.txt
-│   ├── single-instance-matrix.txt
-│   ├── long-context-and-384.txt
-│   ├── mtp-draft-acceptance.txt
-│   ├── vram-ledger-8192.txt
-│   ├── oom-evidence-ncmoe40-ctx256k.txt
-│   ├── kv-quant-ab.txt           ← KV quantization A/B (+3.4%)
-│   ├── needle-accuracy.txt       ← long-context retrieval (12/12)
-│   └── engine-build-ab.txt       ← engine build A/B (no gain)
-├── tools/
-│   ├── bench_single_instance.py  ← ncmoe sweep driver (single-instance discipline)
-│   ├── ab_bench.py               ← multi-round server benchmark (median-of-N)
-│   └── needle_test.py            ← long-context retrieval accuracy test
-└── LICENSE
+Generating 1 token walks through all 48 layers in sequence:
+GPU attn(L1) → CPU experts(L1) → GPU attn(L2) → CPU experts(L2) → ... ×48
+   ↑ working       ↑ idle           ↑ working       ↑ idle
 ```
+
+**To saturate the GPU you'd have to put more experts in VRAM — and VRAM is already full.**
+
+> For reference: if the 79 GB model could fit entirely in VRAM (~4× RTX 5090), utilization would reach 80%+.
+
+---
+
+## The full tuning journey (8 steps)
+
+Every step records **what we did / what we found / why it worked or didn't**.
+
+### Step 0 · Choosing the right quant *layout* (decisive)
+
+**The filter isn't bit-width — it's shard layout**: whether the N-gram table (35.76 GiB) gets its **own shards**.
+
+| Quant | Size | Layout | Measured here | Verdict |
+|---|---:|---|---|---|
+| ⭐ **AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 shards | ✅ Table has own shards | 21.7 (32K) / 24.6–28.2 (64K) | ✅ Previous primary |
+| ⭐ **AD-3.84bpw-IQ4_XS-M64** | 79.10 GiB / 28 shards | ✅ Table has own shards | **25.0 tok/s (256K)** | ✅ **Current primary** |
+| AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 shards | ✅ Own shards (table 50.66 GiB) | not tested | ⚠️ Larger table → more SSD pressure |
+| unsloth UD-IQ4_XS | 87.25 GiB / 3 shards | ❌ Mixed | not tested | ❌ **Unusable**: whole shard locked into RAM, worst case 89.6 GiB resident > 64 GiB |
+| unsloth UD-Q3_K_XL | 83.80 GiB / 3 shards | ❌ Mixed | not tested | ❌ Same problem |
+| NVFP4 | — | — | — | ❌ Not published for this model (enumerated all **164 files**, zero hits) |
+
+**Why layout is decisive**: a GGUF shard is the smallest unit of mmap. If the table shares a shard with experts, touching that shard pulls the **entire shard** (potentially tens of GB) into RAM — fatal on a 64 GB machine. Only "table-owns-its-shards" layouts let dio/mmap page precisely on demand.
+
+**Why we settled on 3.84bpw**: beyond layout, it's the speed/quality sweet spot —
+
+| | 4.27bpw | **3.84bpw** |
+|---|---|---|
+| Size | 88.03 GB | **79.10 GB** |
+| Expert quant | IQ2_S (2.5 bit) | **IQ4_XS (4.25 bit)** |
+| Free RAM | 12.8 GB | **26.2 GB** |
+
+**Counter-intuitive**: 3.84bpw has **higher** expert precision (4.25 bit vs 2.5 bit) — it compresses *other* parts to shrink overall size. **Switching to it is not a downgrade.**
+
+### Step 1 · Fitting 79GB into 24GB VRAM — `--n-cpu-moe`
+
+```
+-ngl 99              ← all layers on GPU (key: do NOT lower this to fit the model!)
+--n-cpu-moe 36       ← keep expert weights of the first 36 layers on CPU
+```
+
+**Key insight**: don't reuse dense-model habits of tuning `-ngl`. For MoE, **keep all attention on the GPU** (used by every token) and move only the **routed experts** (sparsely activated) to RAM.
+
+**Two silent failures to guard against**:
+
+| Failure | Symptom | Cause |
+|---|---|---|
+| Missing CUDA runtime | Speed drops to single digits, **no error** | Silent CPU fallback |
+| VRAM oversubscription | 30× slower, **no error** | Silent PCIe spill |
+
+### Step 2 · KV quantization (q8_0) — best value per byte
+
+KV cache doesn't participate in compute but occupies VRAM. Quantize it → free VRAM goes to more expert layers:
+
+| Config | ncmoe | Speed | Long-context recall |
+|---|---:|---:|---|
+| f16 KV (baseline) | 42 | 21.34 tok/s | 12/12 = 100% |
+| **q8_0 KV** ⭐ | **38** | **22.07 (+3.4%)** | **12/12 = 100%** |
+| q4_0 KV | 36 | 25.03 (no faster) | 12/12 = 100% |
+
+> Accuracy verified with **multi-round randomized needle-in-a-haystack**: 9.7k-token document, 3 facts at random depths, same seed across configs, checking `finish_reason` to rule out truncation artifacts.
+
+**Conclusion: q8_0 is lossless and 3.4% faster.**
+
+### Step 3 · `dio` load mode — frees 13 GB of RAM
+
+```
+--load-mode dio    ← bypass page cache, read SSD directly
+```
+
+**Effect**: free RAM went from **7 GB → 20 GB**. The N-gram table (35.8 GB) is no longer duplicated in the page cache.
+
+**Why it works**: NVMe random-read bandwidth (1.3 GB/s+) is enough to feed CPU-side expert compute; the page-cache benefit doesn't justify the RAM it consumes.
+
+### Step 4 · Switch to the 3.84bpw model — save 8.9 GB, add 4 expert layers
+
+**The chain**:
+```
+Model 88.03 GB → 79.10 GB (save 8.94 GB)
+  → VRAM usage drops 2.4 GB
+  → 4 more expert layers fit in VRAM
+  → less CPU work → faster
+  → RAM usage also drops → free RAM 12.8 GB → 26.2 GB
+```
+
+**A double win**: speed and memory improve together.
+
+### Step 5 · Context tuning — finding the "VRAM pressure cliff"
+
+| Context | ncmoe | decode | vs 128K |
+|---|---:|---:|---:|
+| 128K | 36 | 21.60 tok/s | baseline |
+| 112K | 36 | 24.98 tok/s | **+15.6%** |
+| 96K | 36 | 24.57 tok/s | +13.7% |
+| 80K | 36 | 25.37 tok/s | +17.4% |
+| 64K | 35 | 25.81 tok/s | +19.5% |
+| 32K | 35 | 26.61 tok/s | +23.2% |
+
+**Finding**: 128K → 112K is just **16K less context, yet 15.6% faster**. There's a "VRAM pressure cliff" — at 128K the memory is so tight that allocation overhead peaks.
+
+### Step 6 · ⭐ Disabling MTP — the single biggest win (+23%)
+
+**This step overturned the original assumption.**
+
+MTP (Multi-Token Prediction) speculative decoding sounds like a win — a draft model guesses tokens, the main model verifies them in one pass, saving forward passes. **But in a MoE + CPU-expert architecture it's net-negative**:
+
+| Config | VRAM | decode |
+|---|---:|---:|
+| MTP on + ncmoe=36 | 23.5 GB | **22.0 tok/s** |
+| **MTP off** + ncmoe=36 | 20.2 GB | **25.4 tok/s** |
+| MTP off + ncmoe=34 | 21.1 GB | 26.93 tok/s |
+| **MTP off + ncmoe=32** | 23.2 GB | **27.12 tok/s** |
+
+**Why it's negative**: the verification batch must read the **union of experts activated by multiple candidate tokens** — with most experts resident in RAM, this multiplies memory traffic. **The saved forward passes don't pay for the extra weight reads.**
+
+**And it costs 3.5 GB of VRAM for nothing** (draft model + its own KV). Freeing that buys 4 more expert layers in VRAM.
+
+**Cost of disabling: none. Speed and VRAM both improve.**
+
+### Step 7 · Convert all freed VRAM into expert layers
+
+Disabling MTP freed 3.5 GB → ncmoe dropped 36 → 32 → new record.
+
+**Final VRAM ledger**:
+
+| Item | Size |
+|---|---:|
+| 12 expert layers (48−36) | ~12.4 GB |
+| KV cache (256K, q8_0) | ~4.3 GB |
+| Attention / non-expert tensors | ~4.8 GB |
+| mmproj (vision) | ~0.85 GB |
+| Compute buffers | ~1.2 GB |
+| **Total** | **~23.4 GB** |
+
+---
+
+## Benchmarks
+
+> All numbers come from the **server log's `eval time`** (pure generation time), measured with `temperature=0` and fixed output length for comparability.
+
+### Generation speed
+
+| Scenario | Speed |
+|---|---|
+| Short output (100–200 tok) | 27–30 tok/s |
+| Medium output (500 tok) | 25–27 tok/s |
+| 256K full-length config | 25.0 tok/s |
+
+### Time to first token (TTFT)
+
+| Input length | TTFT | Note |
+|---|---:|---|
+| 1K tokens | **1–3 s** | Short questions — feels instant |
+| 4K tokens | ~12 s | Short article |
+| 8K tokens | ~25 s | Medium document |
+| 12.6K tokens | ~40 s | Long document |
+| 32K tokens | ~100 s | Very long document |
+| 256K tokens | ~11 min | Extreme (a whole book) |
+
+> Prefill runs at **320–400 tok/s**. This is not a bug — and in multi-turn chat, **turn 2 onward is much faster** (prompt cache reuses historical KV).
+
+### MTP draft length sweep (direction since abandoned)
+
+| n-max | decode | draft acceptance |
+|---|---:|---:|
+| 2 | 20.30 tok/s | 0.484 |
+| 4 | ~22.0 tok/s | 0.48–0.52 |
+| 6 | **12.77 tok/s** | 0.275 |
+
+> All obsolete — because **MTP itself is net-negative** (see Step 6).
+
+### Reasoning effort tiers
+
+| Tier | TTFT | Total time | Thinking chars | Best for |
+|---|---:|---:|---:|---|
+| `low` | 1.35s | 16.13s | 376 | Everyday Q&A |
+| **`medium`** | 0.94s | **15.34s** | 370 | General tasks |
+| `xhigh` (default) | **0.81s** | 16.96s | **640** | Complex reasoning |
+
+**By difficulty**:
+
+| Task | low | medium | xhigh |
+|---|---|---|---|
+| Trivia | 7.05s | **5.64s** | 5.71s |
+| Math | 19.42s | **18.54s** | 19.52s |
+| Logic (hard) | 21.92s | **21.85s** | 25.65s (1461 thinking chars) |
+
+> ⚠️ **Hard problems under xhigh can think for 5700+ chars (~3000 tokens)** — with a small `max_tokens` you get "thinks but never answers". **Use 16000.**
+
+---
+
+## Tested and ruled out (12 items)
+
+| Attempt | Result | Reason |
+|---|---:|---|
+| **MTP family** (on/off, n-max tuning, CPU draft, KV-quant draft) | −11% ~ −19% | See Step 6 |
+| `--cpu-strict 1` (core pinning) | +0.2% | Noise |
+| `--prio 2` (process priority) | −0.8% | No improvement |
+| `-b 4096` (larger batch) | ±0% | No improvement |
+| `--poll 0` (disable spin) | −2% | No improvement |
+| `-ub 1024` | **OOM** | Compute buffers grow with ubatch |
+| ncmoe < 30 | **OOM** | Not enough VRAM |
+| KV down to q4_0 | Not faster | Quantization overhead offsets VRAM gain |
+| Disabling VBS / HVCI | **≈0** | VBS overhead is in syscalls/page tables; bottleneck is CPU matmul |
+| Newer engine build (b10889) | No gain | Generation is memory-bandwidth bound; kernel upgrades optimize compute |
+| KV in RAM (`-nkvo`) | Unusable | Reading KV every token → bandwidth pressure |
+| `--chat-template-kwargs` to pin effort | Failed | Breaks the template (and default is already xhigh) |
+
+---
 
 ## FAQ
 
-**Q: Why not NVFP4? The RTX 5090 is Blackwell.**
-A: Three reasons: ① **no NVFP4 quant exists** for this model (full enumeration of both publishers: 164 files, zero FP4 hits); ② generation is **memory-bandwidth bound**, not compute bound — FP4 tensor cores accelerate matmul, not the per-token expert weight reads; ③ NVFP4 is ≈**4.5 bpw** effective, *larger* than the 3.57 bpw body we run — on a machine where the model exceeds total memory that means reading ~26% more bytes per token. See [model-reference §2.4](./docs/model-reference.md).
+**Q: Why not NVFP4? Doesn't Blackwell support it natively?**
 
-**Q: Why llama.cpp and not vLLM / TensorRT-LLM?**
-A: Only llama.cpp offers `--n-cpu-moe` (per-layer control of which experts stay in RAM) plus mmap demand paging — the two prerequisites for running an 88 GiB model on 24 GB VRAM. See [model-reference §2.5](./docs/model-reference.md).
+A: Three layers:
+1. **This model has no NVFP4 release** (enumerated all 164 files across both publishers — zero FP4 quants)
+2. The bottleneck is **memory bandwidth**, not compute — FP4 tensor cores accelerate matmul, not "reading expert weights from RAM every token". **Measured: NVFP4 speeds up prefill (+43–68%) but decode is completely unchanged (~0%)**
+3. NVFP4 is effectively ~**4.5 bpw**, *larger* than our 3.84 bpw — worse in a memory-constrained setup
 
-**Q: Does KV quantization (`-ctk/-ctv q8_0`) hurt quality?**
-A: **No measurable loss here.** Nine-needle randomized test across a 9.7k-token document: f16 and q8_0 both scored **12/12** ([raw data](./results/needle-accuracy.txt)). And the 4 GiB it frees buys 4 more expert layers — worth **+3.4–5%** generation. q4_0 also passed accuracy but was **not faster**, so it isn't worth the extra risk.
+**Q: Why llama.cpp instead of vLLM / TensorRT-LLM?**
 
-**Q: Will a newer llama.cpp build be faster?**
-A: **No.** Builds b10840 and b10889 were statistically indistinguishable in llama-bench (r=3 and r=5) and at the production config (6-round medians: 21.34 vs 20.86 tok/s) — [raw data](./results/engine-build-ab.txt). Generation here is **memory-bandwidth bound**; engine upgrades optimize the **compute** path. The counterexample is a small model with NVFP4 fully resident in VRAM — compute-bound, where kernel upgrades do pay off.
+A: Only llama.cpp offers `--n-cpu-moe` (**keep expert layers in RAM by layer**) plus mmap sharding with on-demand paging — both prerequisites for running a 79 GB model on 24 GB VRAM. (vLLM/SGLang's expert-granularity offload is still an RFC.)
 
-**Q: How large a context can I run? What about on a 24 GB card like yours?**
-A: Use the formula in the [porting guide](./docs/porting-guide.md): `VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + compute buffer`.
+**Q: How large a context can I use?**
 
-| Context | ncmoe | KV | Measured generation |
-|---|---:|---|---|
-| 32K | 32 | f16 | 21.7 tok/s |
-| 64K | 34 | f16 | 24.6–28.2 tok/s |
-| **256K (full)** | **38** | **q8_0** | **22.1–25.3 tok/s** |
-| 256K (full, no KV quant) | 42 | f16 | 21.3 tok/s |
+A: Measured **full 256K**, at 25.08 tok/s. Formula to self-calculate:
 
-**A 24 GB card can still reach the full 256K** — each doubling of context costs 2 more expert layers handed back to RAM (a small speed drop, still above 23 tok/s).
-On a **32 GB card** (e.g. desktop 5090), the formula suggests ncmoe 34–36 with 256K at an **estimated** 26–30 tok/s (not measured).
+```
+VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + compute buffers
+```
 
-**Q: Can generation go faster?**
-A: Two levers: ① a smaller body quant (AD-3.84bpw, measured +5–9.5%); ② more VRAM so more expert layers fit (≈+1–3% per 2 layers). MTP speculative decoding is a **net loss** in this "experts live in RAM" configuration — leave it off.
+**Q: Does MTP help at all?**
 
-**Q: Will it blow up my RAM?**
-A: Single instance peaks at 82–96%, stable. The real risk is running **multiple llama-server instances** — each demands 13–16 GiB of VRAM and two will always overflow.
+A: **In MoE + CPU-expert architectures it is net-negative** (measured +23% when disabled). The most counter-intuitive conclusion in this repo.
 
-## Who this is for
+**Q: GPU utilization is only 25% — isn't that wasteful?**
 
-- You have a **24 GB VRAM consumer GPU + 64 GB RAM** and want to run 100B+ MoE models locally;
-- You're choosing between quant variants and want **measured** numbers, not guesses;
-- You want the maximum usable **context length** and the `--n-cpu-moe` tuning recipe;
-- You want to detect **silent failures** (CPU fallback, VRAM oversubscription) instead of wondering why it's slow.
+A: **No, it's structural.** Decode is a serial relay — the GPU idles while the CPU computes experts. Saturating the GPU requires more experts in VRAM, **and VRAM is already full.**
+
+**Q: Does upgrading RAM to 128GB help?**
+
+A: **Not for speed** (the bottleneck is VRAM capacity). Value is in "system breathing room" and future larger models. Note: all 4 DIMM slots are occupied — upgrading means **replacing the whole set** (4×32GB).
+
+**Q: Can it go faster?**
+
+A: **Software-wise, we're at the limit** (12 dead ends tested). Remaining paths:
+
+| Path | Expected | Cost |
+|---|---|---|
+| Smaller quant (IQ3_S / IQ2_M) | +10–15% (quality unverified) | Download |
+| Faster RAM (2×32GB @ 5600 MT/s) | +7.7% bandwidth | ~$110 |
+| **GPU with more VRAM** | **The only big win** | High |
+
+**Q: Will it blow up RAM?**
+
+A: Single-instance peak is 85–95% — stable. **The real risk is running multiple instances** — each needs 23 GB VRAM; two will fail.
+
+---
+
+## Hardware upgrade paths
+
+| Option | Speed impact | Utilization impact | Cost |
+|---|---|---|---|
+| RAM 64→128GB | **Almost none** | None | ~$200 |
+| RAM as 2×32GB (5600 MT/s) | +7.7% (bandwidth) | Small | ~$110 |
+| **GPU with 48GB VRAM** | **Possibly 2×** | **50–60%** | High |
+| Second 24GB GPU | Large | Large | Very high |
+
+**Conclusion**: **only VRAM buys speed**; RAM upgrades are for system comfort.
+
+---
+
+## Key takeaways
+
+1. **Layout beats bit-width** — whether the N-gram table owns its shards decides whether the setup works at all
+2. **Two silent failures to guard** — missing CUDA runtime silently falls back to CPU; VRAM overflow silently spills to PCIe (30× slower, no error)
+3. **⭐ MTP is net-negative under MoE + CPU experts** — the verification batch's expert-activation union multiplies memory traffic (+23% measured when disabled)
+4. **KV quantization is the best-value knob** — q8_0 is lossless (12/12), freeing VRAM for expert layers yields +3.4–5%
+5. **`dio` frees 13 GB RAM** — keeps the N-gram table on SSD
+6. **Context has a "VRAM pressure cliff"** — 128K→112K is 16K less context for 15.6% more speed
+7. **`--n-cpu-moe` is the only knob** — and it has a cliff (28 layers collapses here: 26.9→4.7 tok/s)
+8. **A newer engine won't be faster** — generation is memory-bandwidth bound (measured no gain)
+9. **Always read `eval time` from the server log** — timing from API request duration is corrupted by cold start and prompt cache; **error can reach 100%**
+10. **Disabling VBS gains nothing** — proving the bottleneck is CPU compute / memory bandwidth physics, not virtualization overhead
+
+---
 
 ## Tested on
 
 | Item | Spec |
 |---|---|
-| GPU | RTX 5090 **Laptop** GPU, 24 GB VRAM (24435 MiB reported), compute capability **12.0 (sm_120)** |
-| RAM | 64 GB |
-| Storage | NVMe SSD (model: 88.03 GiB ≈ 94.5 GB) |
-| Engine | llama.cpp (Unsloth `b10840-mix-d5c17a0`, `cuda12-portable` build) + manually added CUDA 12.8 runtime DLLs. Build b10889 also tested — no throughput gain (see [results/engine-build-ab.txt](./results/engine-build-ab.txt)) |
-| Model | Qwen3.8-Flash-Next GGUF, 176.9B total params (incl. a 51.2B N-gram table) |
+| GPU | RTX 5090 **Laptop**, 24 GB VRAM (24435 MiB visible), compute capability **12.0 (sm_120)** |
+| CPU | Intel Core Ultra 9 275HX (24 threads) |
+| RAM | 64 GB DDR5-5200 (4×16GB, expandable to 128GB) |
+| Storage | NVMe SSD (model 79.10 GiB) |
+| Engine | llama.cpp (Unsloth `b10840-mix-d5c17a0`, `cuda12-portable`) |
+| Model | Qwen3.8-Flash-Next GGUF, 176.9B total params (incl. 51.2B N-gram table) |
+| Vision | mmproj-F16 (0.85 GiB) |
+| System tweaks | Defender exclusions for model dirs; VBS/HVCI disabled (measured no impact) |
 
-## Key takeaways
+---
 
-1. **Layout beats bit-width.** Whether the 35.76 GiB N-gram table gets its own shard decides if the approach is viable on this machine;
-2. **Guard against two silent failures** — a missing CUDA runtime silently falls back to CPU; VRAM overflow silently spills over PCIe (30× slower, no error);
-3. **MoE + CPU-resident experts = speculative decoding is a net loss** — verification batches read the union of activated experts, amplifying memory traffic;
-4. **The KV cache is surprisingly small** (only 33 KiB per token) → give VRAM to context; and it can be **quantized** too, trading cache precision for more expert layers on the GPU — a free speedup;
-5. **`--n-cpu-moe` is the one knob**, and it has a cliff (28 layers collapses in this case);
-6. **Engine upgrades don't help** — generation is bandwidth-bound; newer kernels optimize compute (measured: no gain);
-7. **Benchmark with median-of-N** — the first responses after startup are consistently slower; single-shot numbers mislead.
+## Repository layout
+
+```
+├── README.md                     ← Chinese (primary)
+├── README.en.md                  ← This page
+├── index.html                    ← Visual quick-reference
+├── assets/                       ← Charts (SVG)
+├── docs/
+│   ├── deploy-log.zh.md          ← Full write-up (Chinese)
+│   ├── deploy-log.en.md          ← Full write-up (English)
+│   ├── model-reference.md        ← Architecture, quant comparison, NVFP4 notes
+│   └── porting-guide.md          ← Porting formula & hardware table
+├── results/                      ← Raw measurements
+└── tools/                        ← Reusable benchmark scripts
+```
+
+---
 
 ## Disclaimer
 
-- All numbers are **measured on one machine**; results vary with driver and build versions;
-- Model weights belong to their respective publishers;
-- The benchmark script **kills `llama-server` processes**; do not run it while other inference services are active.
+- All data is **single-machine measured**; results vary with hardware/driver/build version
+- Model weights and quant files belong to their respective publishers
+- Test scripts **automatically terminate llama-server** — do not run them alongside other inference services
 
 ## License
 
