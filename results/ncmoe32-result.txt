@@ -1,0 +1,7 @@
+﻿就绪（约 33 秒）
+显存: 23182 MiB
+  第 1 次: 22.75 tok/s
+  第 2 次: 26.62 tok/s
+--- 日志权威值 ---
+1.16.199.437 I slot print_timing: id  0 | task 515 | prompt eval time =     179.18 ms /     4 tokens (   44.79 ms per token,    22.32 tokens per second)
+1.16.199.444 I slot print_timing: id  0 | task 515 |        eval time =   18841.11 ms /   512 tokens (   36.87 ms per token,    27.12 tokens per second)
