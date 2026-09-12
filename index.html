@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Qwen3.8-Flash-Next 本地部署指南 · RTX 5090 Laptop 24GB</title>
+<meta name="description" content="在一台 24GB 显存的笔记本上跑 177B MoE 模型：27 tok/s，112K 上下文，含完整调优记录。">
+<style>
+  :root {
+    --bg: #fafaf9; --bg-card: #ffffff; --text: #1c1917; --text-dim: #57534e;
+    --text-faint: #a8a29e; --border: #e7e5e4; --accent: #c2410c; --accent-soft: #fff7ed;
+    --ok: #15803d; --ok-soft: #f0fdf4; --bad: #b91c1c; --bad-soft: #fef2f2;
+    --warn: #a16207; --warn-soft: #fefce8; --code-bg: #1c1917; --code-text: #e7e5e4;
+    --shadow: 0 1px 3px rgba(28,25,23,.06), 0 8px 24px -8px rgba(28,25,23,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0c0a09; --bg-card: #1c1917; --text: #f5f5f4; --text-dim: #a8a29e;
+      --text-faint: #78716c; --border: #292524; --accent: #fb923c; --accent-soft: #2a1a0f;
+      --ok: #4ade80; --ok-soft: #0f2417; --bad: #f87171; --bad-soft: #2a1111;
+      --warn: #fbbf24; --warn-soft: #2a2210; --code-bg: #050505; --code-text: #d6d3d1;
+      --shadow: 0 1px 3px rgba(0,0,0,.4), 0 8px 24px -8px rgba(0,0,0,.6);
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; background: var(--bg); color: var(--text); line-height: 1.75; -webkit-font-smoothing: antialiased; }
+  code, pre, .mono { font-family: "SF Mono", "Cascadia Code", Consolas, "Liberation Mono", monospace; }
+  nav { position: sticky; top: 0; z-index: 100; background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: saturate(180%) blur(12px); border-bottom: 1px solid var(--border); }
+  .nav-inner { max-width: 920px; margin: 0 auto; padding: 0 24px; height: 60px; display: flex; align-items: center; gap: 24px; }
+  .nav-brand { font-weight: 650; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; }
+  .nav-brand span { color: var(--accent); }
+  .nav-links { display: flex; gap: 18px; margin-left: auto; flex-wrap: wrap; }
+  .nav-links a { color: var(--text-dim); text-decoration: none; font-size: 13.5px; transition: color .15s; }
+  .nav-links a:hover { color: var(--accent); }
+  main { max-width: 920px; margin: 0 auto; padding: 0 24px 96px; }
+  section { margin-top: 64px; scroll-margin-top: 76px; }
+  h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 700; letter-spacing: -.03em; line-height: 1.15; margin-bottom: 16px; }
+  h2 { font-size: 23px; font-weight: 650; letter-spacing: -.015em; margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16.5px; font-weight: 620; margin: 26px 0 10px; }
+  p { margin-bottom: 14px; color: var(--text-dim); }
+  p strong, li strong { color: var(--text); font-weight: 620; }
+  ul, ol { margin: 0 0 16px 22px; color: var(--text-dim); }
+  li { margin-bottom: 7px; }
+  a { color: var(--accent); }
+  .hero { padding: 56px 0 8px; }
+  .hero .kicker { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px; }
+  .hero .lede { font-size: 17.5px; color: var(--text-dim); max-width: 68ch; }
+  .hero-meta { color: var(--text-faint); font-size: 13.5px; margin-top: 18px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-top: 32px; }
+  .stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 18px 16px; box-shadow: var(--shadow); }
+  .stat .v { font-size: 26px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; font-variant-numeric: tabular-nums; }
+  .stat .v em { font-size: 14px; font-style: normal; font-weight: 500; color: var(--text-dim); margin-left: 3px; }
+  .stat .k { font-size: 12.5px; color: var(--text-faint); margin-top: 5px; }
+  .stat.hi .v { color: var(--accent); }
+  .stat.ok .v { color: var(--ok); }
+  .callout { border-radius: 10px; padding: 15px 18px; margin: 18px 0; border-left: 3px solid; font-size: 14.5px; }
+  .callout p { margin: 0; }
+  .callout p + p { margin-top: 8px; }
+  .callout .t { font-weight: 650; margin-bottom: 5px; color: var(--text); }
+  .c-ok { background: var(--ok-soft); border-color: var(--ok); }
+  .c-bad { background: var(--bad-soft); border-color: var(--bad); }
+  .c-warn { background: var(--warn-soft); border-color: var(--warn); }
+  .c-info { background: var(--accent-soft); border-color: var(--accent); }
+  pre { background: var(--code-bg); color: var(--code-text); border-radius: 10px; padding: 18px 20px; overflow-x: auto; font-size: 12.8px; line-height: 1.65; margin: 14px 0; border: 1px solid var(--border); }
+  pre .cm { color: #78716c; }
+  code:not(pre code) { background: color-mix(in srgb, var(--text) 8%, transparent); padding: 2px 6px; border-radius: 5px; font-size: .88em; color: var(--text); }
+  .tw { overflow-x: auto; margin: 16px 0; border-radius: 10px; border: 1px solid var(--border); }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; background: var(--bg-card); }
+  th, td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); }
+  th { background: color-mix(in srgb, var(--text) 4%, transparent); font-weight: 620; font-size: 13px; color: var(--text); white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .no { color: var(--bad); font-weight: 600; }
+  .best { background: var(--accent-soft); font-weight: 620; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin: 18px 0; }
+  .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; box-shadow: var(--shadow); }
+  .card .h { font-weight: 650; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .card .h .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .card p { font-size: 14px; margin: 0; }
+  .card ul { font-size: 14px; margin: 6px 0 0 18px; }
+  footer { border-top: 1px solid var(--border); margin-top: 72px; padding-top: 24px; font-size: 13px; color: var(--text-faint); }
+  @media (max-width: 640px) { .nav-links { display: none; } .hero { padding-top: 32px; } section { margin-top: 44px; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="nav-brand">Qwen3.8-Flash-Next <span>· 本地部署</span></div>
+    <div class="nav-links">
+      <a href="#arch">架构</a>
+      <a href="#start">快速开始</a>
+      <a href="#client">客户端</a>
+      <a href="#perf">性能</a>
+      <a href="#journey">调优历程</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </div>
+</nav>
+
+<main>
+
+<header class="hero">
+  <div class="kicker">实机调优 · 2026-09-12 更新</div>
+  <h1>24GB 显存笔记本<br>跑 177B MoE 模型</h1>
+  <p class="lede">
+    用 llama.cpp 的专家卸载把 79GB 的模型拆到显存、内存、固态三层，
+    配合上下文调优与 KV 量化，把生成速度推到 <strong>27 tok/s</strong>，
+    同时保留完整的图像识别能力。
+  </p>
+  <div class="hero-meta">RTX 5090 Laptop 24GB · Core Ultra 9 275HX · 64GB DDR5-5200 · NVMe SSD</div>
+
+  <div class="stats">
+    <div class="stat hi"><div class="v">27.12<em>tok/s</em></div><div class="k">生成速度（112K 上下文）</div></div>
+    <div class="stat"><div class="v">79.1<em>GB</em></div><div class="k">模型体积（3.84bpw）</div></div>
+    <div class="stat ok"><div class="v">+23<em>%</em></div><div class="k">本轮调优提升</div></div>
+    <div class="stat"><div class="v">112K</div><div class="k">可用上下文（约 8.4 万字）</div></div>
+    <div class="stat"><div class="v">23.2<em>GB</em></div><div class="k">显存占用 / 24GB</div></div>
+    <div class="stat"><div class="v">0.85<em>GB</em></div><div class="k">图像识别的额外开销</div></div>
+  </div>
+</header>
+
+<section id="arch">
+  <h2>它是怎么跑起来的</h2>
+  <p>模型 79GB、显存 24GB。核心思路是<strong>按访问频率把模型拆成三层</strong>，而不是简单按层切分：</p>
+  <div class="tw">
+    <table>
+      <thead><tr><th>位置</th><th>放什么</th><th>原因</th><th class="num">占用</th></tr></thead>
+      <tbody>
+        <tr><td><strong>显存</strong> 24GB</td><td>注意力层 + 16 层专家 + KV 缓存 + 图像投影</td><td>每 token 都要用，带宽最高（1.8 TB/s）</td><td class="num">23.2 GB</td></tr>
+        <tr><td><strong>内存</strong> 64GB</td><td>其余 32 层专家</td><td>稀疏激活（每 token 只用 10/512 个），带宽够用</td><td class="num">~33 GB</td></tr>
+        <tr><td><strong>固态</strong> NVMe</td><td>n-gram 查表（35.8GB）</td><td><code>dio</code> 模式直读，不占内存</td><td class="num">35.8 GB</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout c-info">
+    <div class="t">为什么这样拆</div>
+    <p>注意力每 token 都要用，必须放带宽最高的显存；专家层稀疏激活，可以放带宽低但容量大的内存里由 CPU 计算。这样 79GB 的模型才能在 24GB 显存上跑起来。</p>
+  </div>
+
+  <h3>瓶颈在哪</h3>
+  <p>实测推理期间 <strong>GPU 利用率约 25%</strong>，CPU 接近满载 —— 这是"专家由 CPU 计算"的必然：GPU 算完注意力段就得等 CPU 算专家段。</p>
+  <div class="callout c-warn">
+    <div class="t">这不是配置问题</div>
+    <p>在"模型 79GB &gt; 显存 24GB"的前提下，GPU 等待 CPU 是物理必然。<strong>增加内存解决不了</strong>（瓶颈是显存容量），唯一办法是换更大显存的显卡。</p>
+  </div>
+</section>
+
+<section id="start">
+  <h2>快速开始</h2>
+
+  <h3>核心启动命令（推荐配置）</h3>
+  <pre><span class="cm"># 112K 上下文 + 图像识别 + 优化配置（27 tok/s）</span>
+cd D:\llama.cpp
+.\llama-server.exe -m "D:\models\Qwen3.8-Flash-Next\Qwen3.8-Flash-Next-AD-3.84bpw-IQ4_XS-M64\Qwen3.8-Flash-Next-AD-3.84bpw-IQ4_XS-M64-00001-of-00028.gguf" `
+  -ngl 99 --n-cpu-moe 32 -fa on -fit off `
+  -c 114688 -np 1 --jinja --alias qwen3.8-flash-next `
+  --temp 1.0 --top-p 0.95 --top-k 20 --min-p 0.0 `
+  --host 127.0.0.1 --port 8080 `
+  -ctk q8_0 -ctv q8_0 --load-mode dio `
+  -mm "D:\models\Qwen3.8-Flash-Next\mmproj-Qwen3.8-Flash-Next-F16.gguf"</pre>
+
+  <div class="callout c-info">
+    <div class="t">加载需要多久</div>
+    <p>约 <strong>30~60 秒</strong>。看到 <code>listening on http://127.0.0.1:8080</code> 即就绪。</p>
+  </div>
+
+  <h3>停止</h3>
+  <pre>D:\llama.cpp\stop-qwen38.ps1</pre>
+  <p>或在启动窗口按 <code>Ctrl+C</code>。<strong>关掉启动窗口 = 服务停止</strong>（前台进程）。</p>
+
+  <h3>按场景调整</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>场景</th><th>改动</th><th class="num">实测</th></tr></thead>
+      <tbody>
+        <tr class="best"><td><strong>极速</strong></td><td><code>-c 114688 --n-cpu-moe 32</code></td><td class="num">27.12 tok/s</td></tr>
+        <tr><td>均衡</td><td><code>-c 163840 --n-cpu-moe 33</code></td><td class="num">25.83 tok/s</td></tr>
+        <tr class="best"><td><strong>长文档（推荐）</strong></td><td><code>-c 262144 --n-cpu-moe 36</code></td><td class="num">25.08 tok/s</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="client">
+  <h2>客户端接入</h2>
+  <div class="tw">
+    <table>
+      <thead><tr><th>配置项</th><th>值</th></tr></thead>
+      <tbody>
+        <tr><td>API 类型</td><td>OpenAI 兼容</td></tr>
+        <tr><td><strong>Base URL</strong></td><td><code>http://127.0.0.1:8080/v1</code></td></tr>
+        <tr><td><strong>模型名</strong></td><td><code>qwen3.8-flash-next</code></td></tr>
+        <tr><td>API Key</td><td>任意（如 <code>sk-local</code>）</td></tr>
+        <tr><td><strong>流式输出</strong></td><td class="yes">务必开启</td></tr>
+        <tr><td>上下文长度</td><td><code>114688</code>（按启动档位填）</td></tr>
+        <tr><td>max_tokens</td><td><code>16000</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>思考强度：默认即最高档</h3>
+  <p>实测不传 <code>reasoning_effort</code> 时，服务端默认按 <strong>xhigh</strong> 处理（思考量 95 字 vs low 的 28 字）。<strong>客户端没有该选项时无需任何操作。</strong></p>
+  <div class="callout c-warn">
+    <div class="t">用 xhigh 时 max_tokens 必须设够</div>
+    <p>实测复杂推理题思考量可达 <strong>5700+ 字符（约 3000 token）</strong>。设成 500 会出现"模型想完了但一个字答案都没输出"。<strong>建议 16000</strong> —— 它是上限而非消耗。</p>
+  </div>
+</section>
+
+<section id="perf">
+  <h2>性能实测</h2>
+  <p>数据来自服务端日志的 <code>eval time</code>（只计纯生成时间），<code>temperature=0</code> 固定输出长度保证可比。</p>
+
+  <h3>本轮关键发现：关掉 MTP 反而更快</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>配置</th><th class="num">显存</th><th class="num">decode</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr><td>MTP 开 + ncmoe=36</td><td class="num">23.5 GB</td><td class="num">22.0 tok/s</td><td>起点</td></tr>
+        <tr><td>MTP 关 + ncmoe=36</td><td class="num">20.2 GB</td><td class="num">25.4 tok/s</td><td>关 MTP 省 3.5GB、快 15%</td></tr>
+        <tr><td>MTP 关 + ncmoe=34</td><td class="num">21.1 GB</td><td class="num">26.93 tok/s</td><td>省下的显存换专家层</td></tr>
+        <tr class="best"><td><strong>MTP 关 + ncmoe=32</strong></td><td class="num">23.2 GB</td><td class="num"><strong>27.12 tok/s</strong></td><td><strong>当前最优</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout c-ok">
+    <div class="t">为什么 MoE + CPU 专家时 MTP 是负收益</div>
+    <p>推测解码的<strong>验证批要读取"多个 token 激活专家的并集"</strong> —— 在专家大部分驻留内存的架构下，这会把内存流量放大，省下的前向次数抵不过多读的权重。</p>
+  </div>
+
+  <h3>上下文 vs 速度（无 MTP，实测）</h3>
+
+  <svg viewBox="0 0 680 260" width="100%" style="margin:16px 0;background:var(--bg-card);border:1px solid var(--border);border-radius:10px;padding:8px">
+    <defs>
+      <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      </marker>
+    </defs>
+    <!-- 网格 -->
+    <g stroke="var(--border)" stroke-width="0.5">
+      <line x1="70" y1="40" x2="640" y2="40"/>
+      <line x1="70" y1="85" x2="640" y2="85"/>
+      <line x1="70" y1="130" x2="640" y2="130"/>
+      <line x1="70" y1="175" x2="640" y2="175"/>
+      <line x1="70" y1="220" x2="640" y2="220"/>
+    </g>
+    <!-- Y 轴标签 -->
+    <g fill="var(--text-faint)" font-size="11" text-anchor="end">
+      <text x="62" y="44">29</text>
+      <text x="62" y="89">27</text>
+      <text x="62" y="134">25</text>
+      <text x="62" y="179">23</text>
+      <text x="62" y="224">21</text>
+    </g>
+    <!-- X 轴标签 -->
+    <g fill="var(--text-faint)" font-size="11" text-anchor="middle">
+      <text x="110" y="242">32K</text>
+      <text x="200" y="242">64K</text>
+      <text x="290" y="242">80K</text>
+      <text x="380" y="242">112K</text>
+      <text x="470" y="242">160K</text>
+      <text x="560" y="242">192K</text>
+      <text x="625" y="242">256K</text>
+    </g>
+    <!-- 折线：26.61, 25.81, 25.37, 27.12, 25.83, 25.31, 25.08 -->
+    <polyline points="110,155 200,167 290,176 380,131 470,171 560,182 625,190"
+              fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round"/>
+    <!-- 数据点 -->
+    <g fill="var(--accent)">
+      <circle cx="110" cy="155" r="4"/>
+      <circle cx="200" cy="167" r="4"/>
+      <circle cx="290" cy="176" r="4"/>
+      <circle cx="380" cy="131" r="5.5"/>
+      <circle cx="470" cy="171" r="4"/>
+      <circle cx="560" cy="182" r="4"/>
+      <circle cx="625" cy="190" r="5.5"/>
+    </g>
+    <!-- 标注 -->
+    <text x="380" y="120" fill="var(--accent)" font-size="11" font-weight="600" text-anchor="middle">27.12</text>
+    <text x="625" y="179" fill="var(--accent)" font-size="11" font-weight="600" text-anchor="end">25.08</text>
+    <text x="110" y="145" fill="var(--text-dim)" font-size="10" text-anchor="middle">26.61</text>
+    <text x="90" y="24" fill="var(--text)" font-size="12" font-weight="600">decode (tok/s)</text>
+  </svg>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>上下文</th><th class="num">ncmoe</th><th class="num">decode</th><th class="num">显存</th></tr></thead>
+      <tbody>
+        <tr><td>32K</td><td class="num">35</td><td class="num">26.61 tok/s</td><td class="num">22.6 GB</td></tr>
+        <tr><td>64K</td><td class="num">35</td><td class="num">25.81 tok/s</td><td class="num">23.3 GB</td></tr>
+        <tr><td>80K</td><td class="num">36</td><td class="num">25.37 tok/s</td><td class="num">22.9 GB</td></tr>
+        <tr class="best"><td><strong>112K</strong></td><td class="num">32</td><td class="num"><strong>27.12 tok/s</strong></td><td class="num">23.2 GB</td></tr>
+        <tr><td>128K</td><td class="num">32</td><td class="num">25.44 tok/s</td><td class="num">23.5 GB</td></tr>
+        <tr><td>144K</td><td class="num">32</td><td class="num">23.93 tok/s</td><td class="num">23.6 GB</td></tr>
+        <tr><td>160K</td><td class="num">33</td><td class="num">25.83 tok/s</td><td class="num">23.3 GB</td></tr>
+        <tr><td>192K</td><td class="num">34</td><td class="num">25.31 tok/s</td><td class="num">23.1 GB</td></tr>
+        <tr class="best"><td><strong>256K（全长）</strong></td><td class="num">36</td><td class="num"><strong>25.08 tok/s</strong></td><td class="num">23.4 GB</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout c-ok">
+    <div class="t">256K 只比 112K 慢 7.5%，但上下文是 2.3 倍</div>
+    <p>曲线整体很平（21~27 tok/s 区间），说明<strong>上下文容量几乎不影响生成速度</strong> —— 真正的决定因素是显存里的专家层数。需要长文档时直接开满 256K。</p>
+  </div>
+
+  <h3>首字节等待（决定"感觉快不快"）</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>输入长度</th><th class="num">首字节</th><th>说明</th></tr></thead>
+      <tbody>
+        <tr class="best"><td>1K token</td><td class="num">1~3 秒</td><td>日常短问，体验流畅</td></tr>
+        <tr><td>8K token</td><td class="num">约 25 秒</td><td>中等文档</td></tr>
+        <tr><td>12.6K token</td><td class="num">约 40 秒</td><td>长文档</td></tr>
+        <tr><td>112K token</td><td class="num">约 350 秒</td><td>极限（整本书）</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>prefill 阶段要把文档"读"一遍并建 KV 缓存，速度约 320~400 tok/s，<strong>不是故障</strong>。多轮对话中第 2 轮起会快很多（prompt cache 复用）。</p>
+</section>
+
+<section id="journey">
+  <h2>调优历程</h2>
+  <p>从 22.0 tok/s 到 27.12 tok/s，以及一路试错的经验。</p>
+
+  <h3 style="color:var(--ok)">✅ 有效（按贡献排序）</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>优化</th><th class="num">贡献</th><th>原理</th></tr></thead>
+      <tbody>
+        <tr><td><strong>关闭 MTP 推测解码</strong></td><td class="num">+23%</td><td>MoE + CPU 专家下验证批放大内存流量，得不偿失</td></tr>
+        <tr><td><strong>减小上下文</strong>（128K→112K）</td><td class="num">+15.6%</td><td>释放显存压力，越过"临界点"</td></tr>
+        <tr><td><strong><code>--n-cpu-moe</code> 精调</strong>（40→32）</td><td class="num">+10~15%</td><td>更多专家进显存，减轻 CPU 负担</td></tr>
+        <tr><td><strong><code>--load-mode dio</code></strong></td><td class="num">约 +10%</td><td>绕页缓存直读 SSD，可用内存 7GB→20GB</td></tr>
+        <tr><td><strong>换 3.84bpw 小模型</strong></td><td class="num">约 +10%</td><td>体积小 8.9GB，省出的显存多放专家</td></tr>
+        <tr><td><strong>KV 量化 q8_0</strong></td><td class="num">约 +6%</td><td>省约 1GB 显存换专家层（本机验证精度无损）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 style="color:var(--bad)">❌ 无效（别再折腾）</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>尝试</th><th>结果</th><th>原因</th></tr></thead>
+      <tbody>
+        <tr><td><strong>MTP 推测解码</strong></td><td class="no">−15%</td><td>见上</td></tr>
+        <tr><td>MTP 模型挪到 CPU</td><td class="no">−11%</td><td>草稿生成变慢，拖累整体</td></tr>
+        <tr><td>MTP 的 KV 量化</td><td class="no">−19%</td><td>草稿精度下降，接受率 0.49→0.37</td></tr>
+        <tr><td>ncmoe 低于 30</td><td class="no">OOM</td><td>显存不够</td></tr>
+        <tr><td><code>-ub 1024</code></td><td class="no">OOM</td><td>计算缓冲随 ubatch 增大</td></tr>
+        <tr><td><code>--poll 0</code></td><td class="no">−2%</td><td>无改善</td></tr>
+        <tr><td>KV 降到 q4_0</td><td class="no">不更快</td><td>量化开销抵消显存收益</td></tr>
+        <tr><td><code>--cpu-strict 1</code></td><td class="no">+0.2%</td><td>核心绑定，噪声范围</td></tr>
+        <tr><td><code>--prio 2</code></td><td class="no">−0.8%</td><td>进程优先级，无改善</td></tr>
+        <tr><td><code>-b 4096</code></td><td class="no">±0%</td><td>更大批处理，无改善</td></tr>
+        <tr><td>关闭 VBS / HVCI</td><td class="no">≈0</td><td>VBS 开销在系统调用/页表，瓶颈是 CPU 矩阵运算</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="callout c-info">
+    <div class="t">软件层面已到底</div>
+    <p>累计排除 <strong>12 项</strong>优化方向。剩余提升路径只在硬件侧：更快内存（+7.7%）、更小量化（+10~15%，质量待验证）、换更大显存显卡（唯一大幅提升）。</p>
+  </div>
+
+  <h3>GPU 利用率为什么只有 25%</h3>
+  <div class="callout c-warn">
+    <div class="t">这是结构性的，不是浪费</div>
+    <p>decode 是串行接力：每生成一个 token 都要走完 48 层，每层是「GPU 算注意力 → CPU 算专家」。GPU 在 CPU 算专家时只能干等。<strong>要填满 GPU 只能把更多专家放进显存，而显存已经满了。</strong></p>
+    <p>对比：若 79GB 模型能全放显存（约需 4 张 5090），利用率可达 80%+。</p>
+  </div>
+</section>
+
+<section id="faq">
+  <h2>常见问题</h2>
+
+  <h3>服务起不来 / 报 OOM</h3>
+  <ul>
+    <li>关掉其他占用显存的程序</li>
+    <li>提高 <code>--n-cpu-moe</code>（如 32→34）</li>
+    <li>检查残留进程：任务管理器搜 <code>llama-server</code></li>
+  </ul>
+
+  <h3>速度比预期慢</h3>
+  <ul>
+    <li><strong>刚启动？</strong>前几次推理慢（缓存冷）</li>
+    <li><strong>在处理长文档？</strong>见首字节表</li>
+    <li><strong>用的是 xhigh 思考？</strong>复杂题思考久属正常</li>
+    <li><strong>GPU 被占用？</strong><code>nvidia-smi</code> 查看</li>
+  </ul>
+
+  <h3>能不能提升 GPU 利用率</h3>
+  <p><strong>当前硬件上不能。</strong>显存 24GB 已满载，无法再往 GPU 塞专家。增加内存也没用（瓶颈是显存容量）。</p>
+
+  <h3>加内存到 128GB 有帮助吗</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>收益</th><th>程度</th></tr></thead>
+      <tbody>
+        <tr><td>系统更从容</td><td class="yes">明显</td></tr>
+        <tr><td>提速</td><td class="no">几乎没有</td></tr>
+        <tr><td>提高 GPU 利用率</td><td class="no">不能</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><strong>注意</strong>：本机 4 个内存插槽全满，升级需整组替换（4×32GB）。</p>
+
+  <h3>NVFP4 量化有帮助吗</h3>
+  <p><strong>对生成速度没有。</strong>NVFP4 加速的是 prefill（首字节 +43~68%），<strong>decode 完全不变（~0%）</strong> —— decode 是带宽受限，FP4 张量核帮不上。此外该模型目前也无 NVFP4 版本。</p>
+
+  <h3>想改参数</h3>
+  <p>编辑 <code>D:\llama.cpp\start-best-*.ps1</code>：</p>
+<pre>$NCMOE    = 32        <span class="cm"># CPU 侧专家层数（调低=更快，但会 OOM）</span>
+$CTX      = 114688    <span class="cm"># 上下文容量</span>
+$KVQUANT  = "q8_0"    <span class="cm"># KV 量化</span>
+$LOADMODE = "dio"     <span class="cm"># 加载模式</span>
+$NMAX     = 4         <span class="cm"># MTP 草稿长度（当前已停用 MTP）</span></pre>
+</section>
+
+<section id="appendix">
+  <h2>参数速查</h2>
+  <div class="tw">
+    <table>
+      <thead><tr><th>参数</th><th>当前值</th><th>作用</th></tr></thead>
+      <tbody>
+        <tr><td><code>-ngl 99</code></td><td>99</td><td>所有层上 GPU（注意力必须留显存）</td></tr>
+        <tr><td><code>--n-cpu-moe</code></td><td>32</td><td>前 32 层的专家权重放 CPU</td></tr>
+        <tr><td><code>-c</code></td><td>114688</td><td>上下文（112K）</td></tr>
+        <tr><td><code>-ctk / -ctv</code></td><td>q8_0</td><td>KV 缓存量化</td></tr>
+        <tr><td><code>-fa on</code></td><td>on</td><td>FlashAttention（必开）</td></tr>
+        <tr><td><code>--load-mode</code></td><td>dio</td><td>绕过页缓存直读 SSD</td></tr>
+        <tr><td><code>-mm</code></td><td>mmproj-F16</td><td>图像识别</td></tr>
+        <tr><td><code>--spec-type</code></td><td><strong>不使用</strong></td><td>MTP 在此架构下为负收益</td></tr>
+        <tr><td><code>-np</code></td><td>1</td><td>并发槽位</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>环境</h3>
+  <div class="tw">
+    <table>
+      <thead><tr><th>项</th><th>值</th></tr></thead>
+      <tbody>
+        <tr><td>GPU</td><td>RTX 5090 Laptop 24GB（Blackwell sm_120）</td></tr>
+        <tr><td>CPU</td><td>Intel Core Ultra 9 275HX</td></tr>
+        <tr><td>内存</td><td>64GB DDR5-5200（4×16GB，最大可扩 128GB）</td></tr>
+        <tr><td>引擎</td><td>llama.cpp b10840</td></tr>
+        <tr><td>模型</td><td>Qwen3.8-Flash-Next AD-3.84bpw-IQ4_XS-M64（79.1GB / 28 分片）</td></tr>
+        <tr><td>视觉</td><td>mmproj-F16（0.85GB）</td></tr>
+        <tr><td>系统优化</td><td>Defender 排除模型目录；VBS/HVCI 已关闭（实测无影响）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>三条纪律</h3>
+  <ol>
+    <li><strong>只开一个实例</strong> —— 多开必爆显存，速度跌到个位数</li>
+    <li><strong>用完就关</strong> —— 常驻占 23GB 显存</li>
+    <li><strong>改配置后必须重启进程</strong> —— 参数只在启动时读取</li>
+  </ol>
+</section>
+
+<footer>
+  <p>本文档由实机调优过程整理，所有数据均为本机实测。<br>
+  硬件：RTX 5090 Laptop 24GB · Core Ultra 9 275HX · 64GB DDR5 · NVMe SSD ｜ 更新于 2026-09-12</p>
+</footer>
+
+</main>
+</body>
+</html>
