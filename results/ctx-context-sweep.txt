@@ -1,0 +1,9 @@
+﻿ctx sweep WITHOUT MTP (baseline: 112K/moe32 = 27.12 tok/s, VRAM 23.2GB)
+
+c128K_moe32 | ctx=131072 moe=32 | decode=25.44 t/s | out=512 | VRAM=23459 MiB
+c144K_moe32 | ctx=147456 moe=32 | decode=23.93 t/s | out=512 | VRAM=23550 MiB
+c160K_moe33 | ctx=163840 moe=33 | decode=25.83 t/s | out=512 | VRAM=23285 MiB
+c192K_moe34 | ctx=196608 moe=34 | decode=25.31 t/s | out=512 | VRAM=23120 MiB
+c256K_moe36 | ctx=262144 moe=36 | decode=25.08 t/s | out=512 | VRAM=23388 MiB
+
+done
