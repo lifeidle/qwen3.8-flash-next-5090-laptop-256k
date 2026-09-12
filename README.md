@@ -1,226 +1,462 @@
-# Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop — 24 GB VRAM + 64 GB RAM · 256K Context
+# Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop
 
-**中文** ｜ [English homepage →](./README.en.md)
+**24 GB VRAM + 64 GB RAM · 256K Context · 25 tok/s · Vision Enabled**
+
+**中文** ｜ [English →](./README.en.md)
 
 ![GPU](https://img.shields.io/badge/GPU-RTX%205090%20Laptop-76B900?style=flat-square&logo=nvidia&logoColor=white)
 ![VRAM](https://img.shields.io/badge/VRAM-24%20GB-0969da?style=flat-square)
 ![RAM](https://img.shields.io/badge/RAM-64%20GB-0969da?style=flat-square)
-![Context](https://img.shields.io/badge/context-256K-2ea44f?style=flat-square)
-![Speed](https://img.shields.io/badge/speed-23.4%20tok%2Fs-8250df?style=flat-square)
-![Quant](https://img.shields.io/badge/quant-AD--4.27bpw-bf8700?style=flat-square)
-
-**中文**：一台 RTX 5090 笔记本（24G 显存）+ 64G 内存，跑通 Qwen3.8-Flash-Next 177B 的 GGUF 量化版：**256K 上下文、23–28 tok/s**，以及完整的选型、踩坑与调优记录。
-**English**: Running **Qwen3.8-Flash-Next 177B** (GGUF quantized) on a single **RTX 5090 Laptop (24 GB VRAM) + 64 GB RAM** — **256K context at 23–28 tok/s**, with the full story of quant selection, pitfalls, and tuning.
-
-**选定量化 / Chosen quant**：⭐ **`AtomicChat AD-4.27bpw-Q4_K_M-M64`**（88.03 GiB，表独占分片）
-
-> 📄 **完整实录** → [中文](./docs/deploy-log.zh.md) ｜ [English](./docs/deploy-log.en.md)
-> 📊 **模型与量化参考** → [models & quants](./docs/model-reference.md)
-> 🔧 **移植到其他硬件** → [porting guide](./docs/porting-guide.md)
-> 🧪 **原始实测数据** → [results/](./results/README.md)
-> 🛠 **可复用测试工具** → [tools/](./tools/bench_single_instance.py)
+![Context](https://img.shields.io/badge/context-256K%20full-2ea44f?style=flat-square)
+![Speed](https://img.shields.io/badge/speed-25.0%20tok%2Fs-8250df?style=flat-square)
+![Quant](https://img.shields.io/badge/quant-AD--3.84bpw-bf8700?style=flat-square)
+![Vision](https://img.shields.io/badge/vision-enabled-orange?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
 
 ---
 
-## 成果一览 / Results at a glance
+## 这是什么 / What this is
+
+在一台**消费级笔记本**上跑通 **177B 参数的 MoE 大模型** —— 不是"能加载"，而是**能日常使用**：
+
+- **256K 上下文开满**（约 19.2 万字，整本书的量级）
+- **25.0 tok/s 生成速度**（约等于每秒 15 个汉字，比人阅读快）
+- **图像识别可用**（保留视觉能力）
+- **显存占用 23.4 / 24 GB**，长期稳定运行
+
+本仓库记录了从零开始的**完整调优过程**：量化选型、三层内存分配、参数扫描、以及 **12 项试过但无效的方向**（避免重复踩坑）。
+
+> 📘 **可视化速查页** → [index.html](./index.html)
+> 🧪 **原始实测数据** → [results/](./results/README.md)
+> 🛠 **可复用测试工具** → [tools/](./tools/bench_single_instance.py)
+> 📄 **深度实录** → [中文](./docs/deploy-log.zh.md) ｜ [English](./docs/deploy-log.en.md)
+> 🔧 **移植到其他硬件** → [porting-guide.md](./docs/porting-guide.md)
+
+**目录**
+
+- [成果总览](#成果总览)
+- [三分钟上手](#三分钟上手)
+- [架构：三层卸载](#架构三层卸载)
+- [完整调优历程（8 步）](#完整调优历程8-步)
+- [性能实测数据](#性能实测数据)
+- [试过但无效的（12 项）](#试过但无效的12-项)
+- [FAQ](#faq)
+- [硬件升级路径](#硬件升级路径)
+- [关键结论](#关键结论)
+
+---
+
+## 成果总览 / Results at a glance
 
 | 指标 / Metric | 最终 / Final |
 |---|---|
-| 生成速度 Generation | **22.1~25.3 tok/s**（256K 全长；多轮中位数 22.07，长答均值 25.34） |
-| 上下文 Context | **256K = 262,144 tokens**（模型全长 / full length） |
-| 量化 Quant | AD-4.27bpw（主力）/ AD-3.84bpw（速度备选） |
-| **KV 缓存** | **q8_0**（从 8.25 GiB 降到 ~4.13 GiB，省下的显存多放 4 层专家 → **+3.4~5%**） |
-| 显存占用 VRAM | ~20.9 / 24 GiB |
-| 单实例内存峰值 RAM peak | 82–96% |
+| 生成速度 Generation | **25.0 tok/s** |
+| 上下文 Context | **262,144 tokens = 256K**（模型全长） |
+| 量化 Quant | **AD-3.84bpw-IQ4_XS-M64**（79.10 GiB / 28 分片） |
+| KV 缓存 | q8_0（精度实测无损） |
+| 显存占用 VRAM | **23.4 / 24 GiB** |
+| 系统内存 RAM | ~33 GB 常驻（专家层） |
+| 视觉能力 Vision | ✅ mmproj-F16（+0.85 GiB） |
+| MTP 推测解码 | ❌ 未启用（**实测负收益，见第 6 步**） |
 
-![上下文档位实测](assets/context-tier.svg)
+### 上下文档位对照 / Context tiers
 
-### 还能再挖 3~5%：把 KV 从显存里省出来
+| 场景 | 上下文 | ncmoe | 实测 decode | 显存 |
+|---|---:|---:|---:|---:|
+| ⚡ 极速 | 114,688（112K） | 32 | **27.12 tok/s** | 23.2 GiB |
+| 均衡 | 163,840（160K） | 33 | 25.83 tok/s | 23.3 GiB |
+| 长文档 | 196,608（192K） | 34 | 25.31 tok/s | 23.1 GiB |
+| **🏆 全长（推荐）** | **262,144（256K）** | **36** | **25.08 tok/s** | 23.4 GiB |
 
-KV 缓存不参与计算却占着显存。量化它 → 省下的显存换更多专家层进显存 → 每 token 少读一份内存（生成阶段正是受内存带宽限制）。
+> **为什么推荐 256K**：它只比 112K 慢 **7.5%**，但上下文是 **2.3 倍** —— 容量收益远大于速度损失。
 
-![KV 量化收益](assets/kv-quant-gain.svg)
+---
 
-| 配置 | ncmoe | 生成速度（多轮中位数） | 长上下文召回精度 |
-|---|---|---|---|
-| f16 KV（基线） | 42 | 21.34 tok/s | 12/12 = 100% |
-| **q8_0 KV** ⭐ | **38** | **22.07（+3.4%）** | **12/12 = 100%** |
-| q4_0 KV | 36 | 25.03（长答均值，未更快） | 12/12 = 100% |
+## 三分钟上手 / Quick start
 
-> 精度用**多轮随机化「大海捞针」**验证：9.7k token 文档、3 个事实埋在不同随机深度、同种子跨配置对比、检查 `finish_reason` 排除截断假象（见 [results/needle-accuracy.txt](./results/needle-accuracy.txt)）。
-
-## 三层内存分配 / Three-tier split
-
-整套方案的核心：**按访问模式分配存储**，而不是一味往显存塞。
-
-![三层内存分配](assets/three-tier.svg)
-
-## 量化选型结果 / Quant selection
-
-**决定性筛除条件不是位宽，而是分片布局**——N-gram 表（35.76 GiB）是否独占分片：
-
-| 量化版本 | 大小 | 分片布局 | 本机实测 | 判定 |
-|---|---|---:|---|---|
-| ⭐ **AtomicChat AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 片 | ✅ 表独占分片 | **21.7（32K）/ 24.6–28.2（64K）/ 23.4 tok/s（256K）** | ✅ **选定 · 主力** |
-| AtomicChat AD-3.84bpw-IQ4_XS-M64 | 79.10 GiB / 28 片 | ✅ 表独占分片 | 同档 **+5~9.5%**（64K 热态 28.24 tok/s） | ⚠️ 速度备选（主体 ≈2.92bpw，质量无数据） |
-| AtomicChat AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 片 | ✅ 表独占分片（表 50.66 GiB） | 未测 | ⚠️ 未选：表更大，SSD 读压力上升 |
-| unsloth UD-IQ4_XS | 87.25 GiB / 3 片 | ❌ 表与专家混装 | 未测 | ❌ **布局不可用**：整片被锁进内存，最坏 89.6 GiB 常驻 > 64 GiB |
-| unsloth UD-Q3_K_XL | 83.80 GiB / 3 片 | ❌ 混装（推定） | 未测 | ❌ 同上 |
-| NVFP4（Blackwell 原生格式） | — | — | — | ❌ **该模型无此版本**（两仓库共 164 个文件枚举，零命中） |
-
-> [!TIP]
-> **最终选择：AtomicChat AD-4.27bpw-Q4_K_M-M64**
-> 在"表独占分片"这一唯一可行布局里，只有它同时满足：① 有公开质量数据（**KLD 0.0842 / Top-1 89.49%**）；② 主体 **3.57 bpw** 位于"速度 vs 质量"的平衡点。
-
-## 最终配置 / Final config
+### 1. 启动
 
 ```bash
 llama-server \
-  -m Qwen3.8-Flash-Next-AD-4.27bpw-Q4_K_M-M64-00001-of-00033.gguf \
-  -ngl 99 --n-cpu-moe 38 \
+  -m Qwen3.8-Flash-Next-AD-3.84bpw-IQ4_XS-M64-00001-of-00028.gguf \
+  -ngl 99 --n-cpu-moe 36 \
   -fa on -fit off \
   -c 262144 -np 1 \
   -ctk q8_0 -ctv q8_0 \
-  --jinja
+  --load-mode dio \
+  -mm mmproj-Qwen3.8-Flash-Next-F16.gguf \
+  --jinja --alias qwen3.8-flash-next \
+  --host 127.0.0.1 --port 8080
 ```
 
-| 需求 Need | ncmoe | ctx | KV | 实测 Measured |
-|---|---:|---:|---|---|
-| 极速 Speed-first | 32 | 65,536 | f16 | 24.6–28.2 tok/s |
-| **均衡 Balanced（推荐）** | **38** | **262,144** | **q8_0** | **22.1~25.3 tok/s** |
-| 精度最保守 Conservative | 42 | 262,144 | f16 | 21.3 tok/s |
-| 多会话 Multi-slot | 44 | 262,144 | q8_0 | 显存余量更大，可开 `-np` 多槽 |
+> ⚠️ **注意：不含 `-md` / `--spec-type`** —— MTP 已停用（负收益，见下）。
+> 加载约 30~60 秒。看到 `listening on http://127.0.0.1:8080` 即就绪。
 
-![ncmoe 扫描](assets/bench-ncmoe-sweep.svg)
+### 2. 客户端配置
 
-<sub>`--n-cpu-moe` 是本方案唯一的旋钮，且存在悬崖：28 层时显存溢出，生成速度从 26.9 掉到 4.7 tok/s。</sub>
-
-> 跷跷板规律 / The see-saw rule：**每 +2 层专家回内存 ≈ 腾出 2.06 GiB 显存 ≈ 上下文翻一倍**
-
-## 使用 / Serving & usage
-
-```bash
-# 1) 启动（模型加载约 40~70 秒；88 GiB 权重要从 SSD 读入页缓存）
-llama-server -m <首分片>.gguf -ngl 99 --n-cpu-moe 38 -fa on -fit off \
-  -c 262144 -np 1 -ctk q8_0 -ctv q8_0 --jinja --host 127.0.0.1 --port 8080
-
-# 2) 浏览器打开 http://127.0.0.1:8080 直接用（自带网页界面）
-#    或接任意 OpenAI 兼容客户端 / 软件：
-#      API 地址 (Base URL) : http://127.0.0.1:8080/v1
-#      模型名 (Model)      : qwen3.8-flash-next   （--alias 设定）
-#      API Key             : 不需要（界面强制要求非空就随便填）
-#    核对模型名：浏览器打开 http://127.0.0.1:8080/v1/models 看 id 字段
-
-# 3) 命令行调用
-curl http://127.0.0.1:8080/v1/chat/completions -H "Content-Type: application/json" \
-  -d '{"messages":[{"role":"user","content":"你好"}],"max_tokens":200}'
-```
-
-客户端举例：**Cherry Studio**、**Chatbox**、**Open WebUI**（日常对话）；**Continue** / **Cline**（VS Code 写代码）。需要识图时挂 `--mmproj`（多占约 0.85 GiB 显存）。
-
-| 日常现象 | 正常值 |
+| 项 | 值 |
 |---|---|
-| 启动耗时 | 40~70 秒 |
-| 首轮速度 | 17~19 tok/s（预热期，正常偏慢） |
-| 连续对话 | **22~25 tok/s** |
-| 系统内存占用 | 90~96%（映射工作集大于物理内存是设计前提，不是故障） |
-| 长文预填充 | ~110 tok/s → 1 万 token 约 90 秒；填满 256K 理论约 40 分钟 |
+| API 类型 | OpenAI 兼容 |
+| **Base URL** | `http://127.0.0.1:8080/v1` |
+| **模型名** | `qwen3.8-flash-next` |
+| API Key | 任意（如 `sk-local`） |
+| **流式输出** | **务必开启** |
+| 上下文长度 | `262144` |
+| **max_tokens** | **16000**（思考量大，设小了会"想完没答案"） |
+| 思考强度 | 不传即默认 **xhigh**（服务端默认值） |
 
-**三条纪律**：① **只开一个实例**——多开必爆内存，速度跌到个位数；② 用完就关（常驻占 22 GB 显存）；③ 改配置后必须重启进程（参数只在启动时读取）。
+### 3. 三条纪律
 
-## 目录 / Repository layout
+1. **只开一个实例** —— 多开必爆显存（每个要 23GB）
+2. **用完就关** —— 常驻占 23GB 显存
+3. **改配置后必须重启进程** —— 参数只在启动时读取
+
+---
+
+## 架构：三层卸载 / Three-tier split
+
+核心思路：**按访问频率分配存储**，而不是一味往显存塞。
+
+| 位置 | 放什么 | 原因 | 占用 |
+|---|---|---|---|
+| **显存** 24GB | 注意力层 + 12 层专家 + KV 缓存 + 图像投影 | 每 token 都要用，带宽 **1.8 TB/s** | 23.4 GB |
+| **内存** 64GB | 其余 36 层专家 | 稀疏激活（每 token 只用 10/512 个），带宽 **62 GB/s** 够用 | ~33 GB |
+| **固态** NVMe | N-gram 查表（35.8GB） | `dio` 模式直读，不占内存 | 35.8 GB |
+
+**为什么这样拆**：注意力每 token 都要用，必须放带宽最高的显存；专家层稀疏激活，可以放带宽低但容量大的内存里由 CPU 计算。这样 79GB 的模型才能在 24GB 显存上跑起来。
+
+### 瓶颈在哪
+
+实测推理期间 **GPU 利用率约 25%**，CPU 接近满载。这是"专家由 CPU 计算"的必然：
 
 ```
-├── README.md                     ← 本页 / this page
-├── README.en.md                  ← English homepage
-├── assets/                       ← 图表 / charts (SVG)
-├── docs/
-│   ├── deploy-log.zh.md          ← 完整实录（中文，十一节）
-│   ├── deploy-log.en.md          ← Full write-up (English)
-│   ├── model-reference.md        ← 架构参数、量化对照、引擎与运行时、NVFP4 说明
-│   └── porting-guide.md          ← 移植公式与硬件对照表
-├── results/                      ← 原始实测输出
-│   ├── llama-bench-ncmoe-sweep.txt
-│   ├── single-instance-matrix.txt
-│   ├── long-context-and-384.txt
-│   ├── mtp-draft-acceptance.txt
-│   ├── vram-ledger-8192.txt
-│   ├── oom-evidence-ncmoe40-ctx256k.txt
-│   ├── kv-quant-ab.txt           ← KV 量化 A/B（+3.4%）
-│   ├── needle-accuracy.txt       ← 长上下文召回精度（12/12）
-│   └── engine-build-ab.txt       ← 引擎构建 A/B（无提升）
-├── tools/
-│   ├── bench_single_instance.py  ← ncmoe 扫描驱动（单实例纪律）
-│   ├── ab_bench.py               ← 多轮取中位数的服务端基准
-│   └── needle_test.py            ← 长上下文召回精度测试
-└── LICENSE
+每生成 1 个 token 要依次走完 48 层：
+GPU 算第1层注意力 → CPU 算第1层专家 → GPU 算第2层注意力 → CPU 算第2层专家 → ... ×48
+      ↑ 工作              ↑ 干等              ↑ 工作              ↑ 干等
 ```
 
-## 常见问题 / FAQ
+**要填满 GPU，唯一办法是把更多专家放进显存 —— 而显存已经满了。**
+
+> 对比参考：若 79GB 模型能全放显存（约需 4 张 5090），利用率可达 80%+。
+
+---
+
+## 完整调优历程（8 步）
+
+从"能跑"到"跑到硬件极限"。每步记录**做了什么 / 发现了什么 / 为什么有效**。
+
+### 第 0 步 · 选对量化布局（决定性）
+
+**筛除条件不是位宽，而是分片布局** —— N-gram 表（35.76 GiB）是否**独占分片**：
+
+| 量化版本 | 大小 | 分片布局 | 本机实测 | 判定 |
+|---|---:|---|---|---|
+| ⭐ **AD-4.27bpw-Q4_K_M-M64** | 88.03 GiB / 33 片 | ✅ 表独占 | 21.7（32K）/ 24.6–28.2（64K） | ✅ 原主力 |
+| ⭐ **AD-3.84bpw-IQ4_XS-M64** | 79.10 GiB / 28 片 | ✅ 表独占 | **25.0 tok/s（256K）** | ✅ **现主力** |
+| AD-5.00bpw-Q5_K_M-M64 | 102.93 GiB / 33 片 | ✅ 表独占（表 50.66 GiB） | 未测 | ⚠️ 表太大，SSD 读压力上升 |
+| unsloth UD-IQ4_XS | 87.25 GiB / 3 片 | ❌ 表与专家混装 | 未测 | ❌ **不可用**：整片锁进内存，最坏 89.6 GiB 常驻 > 64 GiB |
+| unsloth UD-Q3_K_XL | 83.80 GiB / 3 片 | ❌ 混装 | 未测 | ❌ 同上 |
+| NVFP4 | — | — | — | ❌ 该模型无此版本（**164 个文件全量枚举，零命中**） |
+
+**为什么布局是决定性的**：GGUF 分片是 mmap 的最小单位。如果表与专家混在同一片里，一旦这片被访问，**整片（可能几十 GB）都会进内存** —— 在 64GB 内存的机器上直接压垮。只有"表独占分片"的布局，才能让 dio/mmap 精确地按需分页。
+
+**为什么最终选 3.84bpw**：除了布局，它还是"速度 vs 质量"的平衡点 ——
+
+| | 4.27bpw | **3.84bpw** |
+|---|---|---|
+| 体积 | 88.03 GB | **79.10 GB** |
+| 专家量化 | IQ2_S（2.5 bit） | **IQ4_XS（4.25 bit）** |
+| 可用内存 | 12.8 GB | **26.2 GB** |
+
+**反直觉的一点**：3.84bpw 的专家精度**更高**（4.25bit vs 2.5bit），它是靠压缩其他部分来控制总体积的。**换过去不是降级。**
+
+### 第 1 步 · 让 79GB 模型跑进 24GB 显存 —— `--n-cpu-moe`
+
+```
+-ngl 99              ← 所有层上 GPU（关键：不要为了塞模型调低它！）
+--n-cpu-moe 36       ← 前 36 层的【专家权重】放 CPU
+```
+
+**关键认识**：不要沿用稠密模型的思路去调 `-ngl`。MoE 应该**让注意力层全部留在显存**（每 token 都用），只把**路由专家**（稀疏激活）挪到内存。
+
+**两类静默失败要防**：
+
+| 失败类型 | 症状 | 原因 |
+|---|---|---|
+| CUDA 运行时缺失 | 速度掉到个位数，**无报错** | 静默退回 CPU 计算 |
+| 显存溢出 | 慢 30 倍，**无报错** | 静默走 PCIe |
+
+### 第 2 步 · KV 量化（q8_0）—— 性价比最高的一档
+
+KV 缓存不参与计算却占着显存。量化它 → 省下的显存换更多专家层：
+
+| 配置 | ncmoe | 生成速度 | 长上下文召回精度 |
+|---|---:|---:|---|
+| f16 KV（基线） | 42 | 21.34 tok/s | 12/12 = 100% |
+| **q8_0 KV** ⭐ | **38** | **22.07（+3.4%）** | **12/12 = 100%** |
+| q4_0 KV | 36 | 25.03（未更快） | 12/12 = 100% |
+
+> 精度用**多轮随机化「大海捞针」**验证：9.7k token 文档、3 个事实埋在随机深度、同种子跨配置对比、检查 `finish_reason` 排除截断假象。
+
+**结论：q8_0 精度无损且提速 3.4%。**
+
+### 第 3 步 · `dio` 加载模式 —— 省 13GB 内存
+
+```
+--load-mode dio    ← 绕过系统页缓存，直读 SSD
+```
+
+**效果**：可用内存从 **7GB → 20GB**。N-gram 表（35.8GB）不再被页缓存重复占用。
+
+**为什么可行**：NVMe 随机读带宽（1.3GB/s+）足够喂饱 CPU 侧专家计算，页缓存的收益抵不上它挤占的内存。
+
+### 第 4 步 · 换 3.84bpw 小模型 —— 省 8.9GB，多放 4 层专家
+
+**关键链条**：
+```
+模型 88.03GB → 79.10GB（省 8.94GB）
+  → 显存占用降 2.4GB
+  → 可多放 4 层专家进显存
+  → CPU 侧负担减轻 → 提速
+  → 同时内存占用也降 → 可用内存 12.8GB → 26.2GB
+```
+
+**双赢**：速度和内存同时改善。
+
+### 第 5 步 · 上下文调优 —— 找到"显存压力临界点"
+
+| 上下文 | ncmoe | decode | vs 128K |
+|---|---:|---:|---:|
+| 128K | 36 | 21.60 tok/s | 基准 |
+| 112K | 36 | 24.98 tok/s | **+15.6%** |
+| 96K | 36 | 24.57 tok/s | +13.7% |
+| 80K | 36 | 25.37 tok/s | +17.4% |
+| 64K | 35 | 25.81 tok/s | +19.5% |
+| 32K | 35 | 26.61 tok/s | +23.2% |
+
+**发现**：128K → 112K **只减 16K 就快 15.6%**。存在一个"显存压力临界点" —— 128K 时显存被压得太满，各种分配开销都在最高档。
+
+### 第 6 步 · ⭐ 关掉 MTP —— 最大的单项收益（+23%）
+
+**这一步推翻了最初的假设。**
+
+MTP（Multi-Token Prediction）推测解码的直觉是"草稿模型先猜、主模型一次验证"能省前向次数。**但在 MoE + CPU 专家的架构下，它是负收益**：
+
+| 配置 | 显存 | decode |
+|---|---:|---:|
+| MTP 开 + ncmoe=36 | 23.5 GB | **22.0 tok/s** |
+| **MTP 关** + ncmoe=36 | 20.2 GB | **25.4 tok/s** |
+| MTP 关 + ncmoe=34 | 21.1 GB | 26.93 tok/s |
+| **MTP 关 + ncmoe=32** | 23.2 GB | **27.12 tok/s** |
+
+**为什么是负收益**：推测解码的**验证批要读取"多个候选 token 激活专家的并集"** —— 在专家大部分驻留内存的架构下，这会把内存流量放大。**省下的前向次数，抵不过多读的专家权重。**
+
+**而且它还白占 3.5GB 显存**（草稿模型 + 自己的 KV）。关掉后这 3.5GB 能换 4 层专家进显存。
+
+**代价：无。速度、显存双赢。**
+
+### 第 7 步 · 把省下的显存全部换成专家层
+
+关掉 MTP 省下 3.5GB → ncmoe 从 36 降到 32 → 刷新纪录。
+
+**最终显存账本**：
+
+| 项目 | 占用 |
+|---|---:|
+| 12 层专家（48−36） | ~12.4 GB |
+| KV 缓存（256K, q8_0） | ~4.3 GB |
+| 注意力等非专家张量 | ~4.8 GB |
+| mmproj（图像识别） | ~0.85 GB |
+| 计算缓冲 | ~1.2 GB |
+| **合计** | **~23.4 GB** |
+
+---
+
+## 性能实测数据
+
+> 所有数据来自**服务端日志的 `eval time`**（只计纯生成时间），`temperature=0` 固定输出长度保证可比。
+
+### 生成速度
+
+| 场景 | 速度 |
+|---|---|
+| 短输出（100~200 token） | 27~30 tok/s |
+| 中输出（500 token） | 25~27 tok/s |
+| 256K 全长配置 | 25.0 tok/s |
+
+### 首字节等待（决定"感觉快不快"）
+
+| 输入长度 | 首字节 | 说明 |
+|---|---:|---|
+| 1K token | **1~3 秒** | 日常短问，体验流畅 |
+| 4K token | 约 12 秒 | 短文 |
+| 8K token | 约 25 秒 | 中等文档 |
+| 12.6K token | 约 40 秒 | 长文档 |
+| 32K token | 约 100 秒 | 超长文档 |
+| 256K token | 约 11 分钟 | 极限（整本书） |
+
+> prefill 速度约 **320~400 tok/s**。这不是故障 —— 多轮对话中**第 2 轮起会快很多**（prompt cache 复用历史 KV）。
+
+### MTP 调参（已排除的方向）
+
+| n-max | decode | draft 接受率 |
+|---|---:|---:|
+| 2 | 20.30 tok/s | 0.484 |
+| 4 | ~22.0 tok/s | 0.48~0.52 |
+| 6 | **12.77 tok/s** | 0.275 |
+
+> 已全部废弃 —— 因为 **MTP 本身就是负收益**（见第 6 步）。
+
+### 思考强度（reasoning_effort）
+
+| 档位 | 首字节 | 总耗时 | 思考量 | 适用 |
+|---|---:|---:|---:|---|
+| `low` | 1.35s | 16.13s | 376 字 | 日常问答 |
+| **`medium`** | 0.94s | **15.34s** | 370 字 | 一般任务 |
+| `xhigh`（默认） | **0.81s** | 16.96s | **640 字** | 复杂推理 |
+
+**按难度分化**：
+
+| 题目 | low | medium | xhigh |
+|---|---|---|---|
+| 常识 | 7.05s | **5.64s** | 5.71s |
+| 数学 | 19.42s | **18.54s** | 19.52s |
+| 逻辑（难） | 21.92s | **21.85s** | 25.65s（思考 1461 字） |
+
+> ⚠️ **难题在 xhigh 下思考量可达 5700+ 字符（约 3000 token）** —— `max_tokens` 设小了会出现"想完了但没答案"。**建议 16000。**
+
+---
+
+## 试过但无效的（12 项）
+
+| 尝试 | 结果 | 原因 |
+|---|---:|---|
+| **MTP 全系列**（开关 / n-max 调参 / 挪 CPU / KV 量化） | −11% ~ −19% | 见第 6 步 |
+| `--cpu-strict 1`（CPU 核心绑定） | +0.2% | 噪声 |
+| `--prio 2`（进程优先级） | −0.8% | 无改善 |
+| `-b 4096`（更大批处理） | ±0% | 无改善 |
+| `--poll 0`（关线程自旋） | −2% | 无改善 |
+| `-ub 1024` | **OOM** | 计算缓冲随 ubatch 增大 |
+| ncmoe < 30 | **OOM** | 显存不够 |
+| KV 降到 q4_0 | 不更快 | 量化开销抵消显存收益 |
+| 关闭 VBS / HVCI | **≈0** | VBS 开销在系统调用与页表，瓶颈是 CPU 矩阵运算 |
+| 换新引擎（b10889） | 无提升 | 生成受内存带宽限制，内核升级优化算力路径 |
+| KV 放内存（`-nkvo`） | 不可行 | 每 token 读 KV → 带宽压力 |
+| `--chat-template-kwargs` 固定思考档 | 失败 | 会破坏模板（且默认已是 xhigh，无需） |
+
+---
+
+## FAQ
 
 **Q: 为什么不用 NVFP4？Blackwell 不是原生支持吗？**
-A: 三个层次：① **这个模型没有 NVFP4 版本**（两个发布方共 164 个文件全量枚举，无 FP4 量化）；② 生成的瓶颈是**内存带宽**不是算力——4 位浮点张量核加速的是矩阵乘法，帮不到"每 token 从内存读专家权重"；③ NVFP4 等效约 **4.5 bpw**，比现用的 3.57 bpw 主体**更大**，在内存受限场景反而更慢。详见 [model-reference §2.4](./docs/model-reference.md)。
+
+A: 三个层次：
+1. **这个模型没有 NVFP4 版本**（两个发布方共 164 个文件全量枚举，无 FP4 量化）
+2. 生成瓶颈是**内存带宽**不是算力 —— FP4 张量核加速的是矩阵乘法，帮不到"每 token 从内存读专家权重"。**实测 NVFP4 只加速 prefill（+43~68%），decode 完全不变（~0%）**
+3. NVFP4 等效约 **4.5 bpw**，比现用的 3.84 bpw **更大**，在内存受限场景反而更慢
 
 **Q: 为什么用 llama.cpp，不用 vLLM / TensorRT-LLM？**
-A: 只有 llama.cpp 提供 `--n-cpu-moe` 这种**按层把专家留在内存**的精细控制，以及 mmap 分片按需分页——这两点是 24G 显存跑 88 GiB 模型的前提。详见 [model-reference §2.5](./docs/model-reference.md)。
 
-**Q: 上下文最多能开多大？我这台 24G 显存的机器能开多少？**
-A: 用 [移植指南](./docs/porting-guide.md) 的公式自己算：`VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + 计算缓冲`。
+A: 只有 llama.cpp 提供 `--n-cpu-moe` 这种**按层把专家留在内存**的精细控制，以及 mmap 分片按需分页 —— 这两点是 24G 显存跑 79GB 模型的前提。（vLLM/SGLang 的 expert 粒度 offload 还在 RFC 阶段）
 
-| 上下文 Context | ncmoe | 实测生成 Measured |
-|---|---:|---|
-| 32K | 32 | 21.7 tok/s |
-| 64K | 34 | 24.6~28.2 tok/s |
-| **256K（模型全长）** | **42** | **23.4 tok/s** |
+**Q: 上下文最多能开多大？**
 
-**24G 显存也能把 256K 开满**，代价是每多要一倍上下文，就要多还 2 层专家到内存（速度略降，仍在 23 tok/s 以上）。
-若你是 **32G 显存**（如台式 5090），按公式可停在 ncmoe 34~36 + 256K，速度**推算** 26~30 tok/s（未实测）。
+A: 本机实测**能开满 256K**，速度 25.08 tok/s。自算公式：
 
-**Q: KV 量化（`-ctk/-ctv q8_0`）会不会掉精度？**
-A: 本机实测**无损失**：9.7k token 文档、随机深度埋 3 个事实、4 组测试，f16 与 q8_0 均为 **12/12 满分**（[原始数据](./results/needle-accuracy.txt)）。而且省下的 4 GiB 显存能多放 4 层专家，直接换来 **+3.4~5%** 速度 —— 这是目前性价比最高的一档优化。q4_0 精度也过关但**速度并未更快**，故不推荐。
+```
+VRAM ≈ 4.4 + (48−ncmoe)×1.03 + ctx×33KiB + 计算缓冲
+```
 
-**Q: 换个更新的 llama.cpp 构建会不会更快？**
-A: 实测**没有提升**。b10840 与 b10889 在 llama-bench（r=3 / r=5）和生产配置服务端（6 轮取中位数：21.34 vs 20.86 tok/s）上都统计不可区分（[原始数据](./results/engine-build-ab.txt)）。原因：生成阶段受**内存带宽**限制，引擎升级优化的是**计算路径**。反例是"小模型 + NVFP4 + 权重全在显存"——那是算力受限，内核升级才有效。
+**Q: MTP 到底有没有用？**
+
+A: **在 MoE + CPU 专家的架构下，是负收益**（实测关掉 +23%）。这是本仓库最反直觉的结论。
+
+**Q: GPU 利用率只有 25%，是不是浪费？**
+
+A: **不是，这是结构性的。** decode 是串行接力，GPU 在 CPU 算专家时只能干等。要填满 GPU 只能把更多专家放进显存，**而显存已经满了**。
+
+**Q: 内存升到 128GB 有帮助吗？**
+
+A: 对速度**几乎没有**（瓶颈是显存容量）。价值在"系统更从容"和"未来上更大模型"。注意本机 4 个插槽全满，升级需**整组替换**（4×32GB）。
 
 **Q: 生成速度还能再快吗？**
-A: 目前只剩三条路：① 更小的主体量化（AD-3.84bpw，实测 +5~9.5%，但质量无公开背书）；② 更多显存放专家（本机已接近上限，KV 量化已把可挖的挖完）；③ 更快的内存（本机 4 条 16GB 受双 DIMM/通道限制跑在 5200 MT/s，换 2×32GB 可跑满 5600，带宽 +7.7%）。MTP 投机解码是**负收益**，换新引擎**无收益**，两条都已实测排除。
+
+A: 软件层面**已经到底**（12 项无效尝试）。剩余路径：
+
+| 路径 | 预期 | 成本 |
+|---|---|---|
+| 更小量化（IQ3_S / IQ2_M） | +10~15%（质量待验证） | 需下载 |
+| 更快内存（2×32GB → 5600 MT/s） | +7.7% 带宽 | ~¥800 |
+| **换更大显存显卡** | **唯一大幅提升** | 高 |
 
 **Q: 会不会把内存撑爆？**
-A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是同时开多个 llama-server 实例**——每个要 13~16 GiB 显存，两个必爆。
 
-## 适用场景 / Who this is for
+A: 单实例实测内存峰值 85~95%，稳定运行。**真正的风险是同时开多个实例** —— 每个要 23GB 显存，两个必爆。
 
-- 你有一台 **24 GB 显存的消费级显卡 + 64 GB 内存** 的机器，想跑 100B+ 级别的 MoE 大模型；
-- 你在纠结**选哪个量化档位**（AD 4.27 / 3.84 / 5.00，unsloth UD-Q3_K_XL / UD-IQ4_XS）；
-- 你想知道**上下文能开多大**、`--n-cpu-moe` 怎么调、MTP 投机解码为什么在你这儿没用；
-- 你想避免**静默失败**：推理悄悄退回 CPU、显存悄悄溢出到内存。
+---
 
-- You have a **24 GB VRAM consumer GPU + 64 GB RAM** and want to run 100B+ MoE models locally;
-- You're choosing between quant variants and want **measured** numbers, not guesses;
-- You want the maximum usable **context length**, and the `--n-cpu-moe` tuning recipe;
-- You want to detect **silent failures** (CPU fallback, VRAM oversubscription) instead of guessing why it's slow.
+## 硬件升级路径
 
-## 硬件与软件 / Tested on
+| 方案 | 对速度的影响 | 对利用率的影响 | 成本 |
+|---|---|---|---|
+| 内存 64→128GB | **几乎没有** | 不能 | ~¥1500 |
+| 内存换 2×32GB（5600 MT/s） | +7.7%（带宽） | 小幅 | ~¥800 |
+| **显卡换 48GB 显存** | **可能翻倍** | **50~60%** | 高 |
+| 加第二张 24GB 卡 | 大幅 | 大幅 | 很高 |
 
-| 项目 Item | 规格 Spec |
+**结论**：**提速只能靠显存**；内存升级只为"系统从容"。
+
+---
+
+## 关键结论
+
+1. **布局比位宽重要** —— N-gram 表是否独占分片，决定方案能否成立
+2. **两类静默失败要防** —— CUDA 缺失静默退回 CPU；显存溢出静默走 PCIe（慢 30 倍无报错）
+3. **⭐ MTP 在 MoE + CPU 专家下是负收益** —— 验证批的专家激活并集放大内存流量（实测关掉 +23%）
+4. **KV 量化是性价比最高的一档** —— q8_0 精度无损（12/12），换专家层 +3.4~5%
+5. **`dio` 省 13GB 内存** —— 让 N-gram 表留在 SSD
+6. **上下文存在"显存压力临界点"** —— 128K→112K 只减 16K 就快 15.6%
+7. **`--n-cpu-moe` 是唯一的旋钮**，且存在悬崖（本例 28 层即崩，26.9→4.7 tok/s）
+8. **换引擎不会更快** —— 生成受内存带宽限制（实测无提升）
+9. **测速必须读服务端日志的 `eval time`** —— 用 API 耗时推算会被冷启动和 prompt cache 干扰，**误差可达 100%**
+10. **关掉 VBS 没有收益** —— 证明瓶颈是 CPU 算力/内存带宽的物理限制，不是软件虚拟化开销
+
+---
+
+## 硬件与软件
+
+| 项目 | 规格 |
 |---|---|
-| GPU | RTX 5090 **Laptop** GPU，24 GB 显存（24435 MiB 可见），compute capability **12.0 (sm_120)** |
-| 内存 RAM | 64 GB |
-| 存储 Storage | NVMe SSD（模型 88.03 GiB ≈ 94.5 GB） |
-| 引擎 Engine | llama.cpp（Unsloth `b10840-mix-d5c17a0`，`cuda12-portable` 构建）+ 补装的 CUDA 12.8 运行时 DLL |
-| 模型 Model | Qwen3.8-Flash-Next GGUF，总参数 176.9B（含 51.2B N-gram 表） |
+| GPU | RTX 5090 **Laptop**，24 GB 显存（24435 MiB 可见），compute capability **12.0 (sm_120)** |
+| CPU | Intel Core Ultra 9 275HX（24 线程） |
+| 内存 | 64 GB DDR5-5200（4×16GB，最大可扩 128GB） |
+| 存储 | NVMe SSD（模型 79.10 GiB） |
+| 引擎 | llama.cpp（Unsloth `b10840-mix-d5c17a0`，`cuda12-portable`） |
+| 模型 | Qwen3.8-Flash-Next GGUF，总参数 176.9B（含 51.2B N-gram 表） |
+| 视觉 | mmproj-F16（0.85 GiB） |
+| 系统优化 | Defender 排除模型目录；VBS/HVCI 已关闭（实测无影响） |
 
-## 关键结论速览 / Key takeaways
+---
 
-1. **布局比位宽重要** — N-gram 表（35.76 GiB）是否独占分片，决定方案能否成立；
-2. **两类静默失败**要防 — CUDA 运行时缺失会静默退回 CPU；显存溢出会静默走 PCIe（慢 30 倍、无报错）；
-3. **MoE + CPU 专家 = 投机解码负收益** — 验证批的专家激活并集会放大内存流量；
-4. **KV 缓存小得出奇**（每 token 仅 33 KiB）→ 显存尽量让给上下文，把专家还给内存；**而且 KV 本身还能量化**，省出的显存换专家层 = 免费提速；
-5. **`--n-cpu-moe` 是唯一的旋钮**，且存在悬崖（本例 28 层即崩）；
-6. **换引擎不会更快** — 生成受内存带宽限制，内核升级优化的是算力路径（实测无提升）；
-7. **测速必须多轮取中位数** — 服务端首轮普遍偏慢，单发测量会得出错误结论。
+## 仓库结构
 
-## 免责声明 / Disclaimer
+```
+├── README.md                     ← 本页
+├── README.en.md                  ← English
+├── index.html                    ← 可视化速查页
+├── assets/                       ← 图表 (SVG)
+├── docs/
+│   ├── deploy-log.zh.md          ← 完整实录（中文）
+│   ├── deploy-log.en.md          ← Full write-up (English)
+│   ├── model-reference.md        ← 架构参数、量化对照、NVFP4 说明
+│   └── porting-guide.md          ← 移植公式与硬件对照表
+├── results/                      ← 原始实测输出
+└── tools/                        ← 可复用测试工具
+```
+
+---
+
+## 免责声明
 
 - 所有数据均为**单机实测**，硬件/驱动/构建版本不同结果会有差异；
 - 模型权重与量化文件版权归各自发布方；
@@ -228,4 +464,4 @@ A: 单实例下实测内存峰值 82~96%，稳定运行。**真正的风险是�
 
 ## License
 
-MIT（仅适用于本仓库的文档与脚本 / applies to this repository's docs and scripts only）
+MIT（仅适用于本仓库的文档与脚本）
