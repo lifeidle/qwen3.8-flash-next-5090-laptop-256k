@@ -1,0 +1,13 @@
+﻿就绪（约 33 秒）
+显存: 20227 MiB
+--- MTP 关闭，测 3 次（temp=0，512 tok）---
+  第 1 次: 512 tok / 23.7s = 21.65 tok/s
+  第 2 次: 512 tok / 20.3s = 25.23 tok/s
+  第 3 次: 512 tok / 20.4s = 25.09 tok/s
+
+--- 服务端日志（权威）---
+1.21.248.593 I slot print_timing: id  0 | task 515 |        eval time =   19947.80 ms /   512 tokens (   39.04 ms per token,    25.62 tokens per second)
+1.41.657.157 I slot print_timing: id  0 | task 1028 | prompt eval time =     224.67 ms /     4 tokens (   56.17 ms per token,    17.80 tokens per second)
+1.41.657.165 I slot print_timing: id  0 | task 1028 |        eval time =   20177.71 ms /   512 tokens (   39.49 ms per token,    25.32 tokens per second)
+
+对照（MTP 开，n-max=4）：22.0 tok/s（此前测）
