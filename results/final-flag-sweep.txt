@@ -1,0 +1,8 @@
+﻿Final potential sweep @ 256K (no MTP). Baseline: 25.08 tok/s
+
+256K_base | decode=24.97 t/s | out=512 | VRAM=23392 MiB | flags=
+256K_cpustrict | decode=25.01 t/s | out=512 | VRAM=23391 MiB | flags=--cpu-strict 1
+256K_prio2 | decode=24.78 t/s | out=512 | VRAM=23391 MiB | flags=--prio 2
+256K_schedbatch | decode=24.98 t/s | out=512 | VRAM=23392 MiB | flags=-b 4096
+
+done
