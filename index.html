@@ -90,6 +90,7 @@
   <div class="nav-inner">
     <div class="nav-brand">Qwen3.8-Flash-Next <span>· 本地部署</span></div>
     <div class="nav-links">
+      <a href="#download">下载模型</a>
       <a href="#arch">架构</a>
       <a href="#start">快速开始</a>
       <a href="#client">客户端</a>
@@ -145,6 +146,77 @@
   <div class="callout c-warn">
     <div class="t">这不是配置问题</div>
     <p>在"模型 79GB &gt; 显存 24GB"的前提下，GPU 等待 CPU 是物理必然。<strong>增加内存解决不了</strong>（瓶颈是显存容量），唯一办法是换更大显存的显卡。</p>
+  </div>
+</section>
+
+<section id="download">
+  <h2>先下载模型</h2>
+  <p>本方案使用的模型与配套文件，全部来自公开的 Hugging Face 仓库（按 Qwen Community License 1.0 发布）：</p>
+
+  <div class="tw">
+    <table>
+      <thead><tr><th>文件</th><th>说明</th><th>大小</th><th>来源</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>AD-3.84bpw-IQ4_XS-M64</strong></td>
+          <td><strong>主模型</strong>（28 分片）</td>
+          <td class="num">84.9 GB</td>
+          <td><a href="https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF" target="_blank" rel="noopener">AtomicChat/Qwen3.8-Flash-Next-GGUF →</a></td>
+        </tr>
+        <tr>
+          <td>mmproj-Qwen3.8-Flash-Next-F16.gguf</td>
+          <td>视觉投影（图像识别，可选）</td>
+          <td class="num">0.85 GB</td>
+          <td><a href="https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF" target="_blank" rel="noopener">同一仓库 →</a></td>
+        </tr>
+        <tr>
+          <td>llama.cpp</td>
+          <td>推理引擎（需支持 Qwen3.8-Flash-Next 架构的构建）</td>
+          <td class="num">—</td>
+          <td><a href="https://github.com/ggml-org/llama.cpp" target="_blank" rel="noopener">github.com/ggml-org/llama.cpp →</a></td>
+        </tr>
+        <tr>
+          <td>Qwen/Qwen3.8-Flash-Next</td>
+          <td>原始权重（仅作参考，不需要下载）</td>
+          <td class="num">—</td>
+          <td><a href="https://huggingface.co/Qwen/Qwen3.8-Flash-Next" target="_blank" rel="noopener">Qwen 官方 →</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout c-warn">
+    <div class="t">⚠️ 务必选 AtomicChat 版本，不要用其他发布方的同类量化</div>
+    <p>
+      区别不在位宽，而在<strong>分片布局</strong>：只有 AtomicChat 的 <code>-M64</code> 版本把 N-gram 表（35.8GB）
+      <strong>放进独立分片</strong>。其他发布方（如 unsloth 的 UD 系列）把表与专家混装在同一分片里 ——
+      一旦这片被访问，<strong>整片（几十 GB）都会被锁进内存</strong>，在 64GB 机器上直接压垮。
+    </p>
+    <p>
+      实测对比：同一台机器上，混淆分片的量化会出现"长对话到 60K~100K token 时静默崩溃"，
+      而 AtomicChat 版本可以塞满整个 256K 上下文稳定运行。
+    </p>
+  </div>
+
+  <h3>下载方式（任选）</h3>
+  <pre><span class="cm"># 方式 1：huggingface-cli（推荐，支持断点续传）</span>
+pip install -U "huggingface_hub[cli]"
+hf download AtomicChat/Qwen3.8-Flash-Next-GGUF --include "*AD-3.84bpw-IQ4_XS-M64*" --local-dir D:\models\Qwen3.8-Flash-Next
+
+<span class="cm"># 方式 2：同时下载主模型 + 视觉投影</span>
+hf download AtomicChat/Qwen3.8-Flash-Next-GGUF --include "*3.84bpw*" --include "*mmproj*" --local-dir D:\models\Qwen3.8-Flash-Next
+
+<span class="cm"># 方式 3：网页端</span>
+<span class="cm"># 打开 https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF</span>
+<span class="cm"># → Files and versions → 下载 28 个分片</span></pre>
+
+  <div class="callout c-info">
+    <div class="t">硬件前提</div>
+    <p>
+      <strong>24GB 显存 + 64GB 内存 + NVMe SSD</strong> 是本方案的实测配置。
+      内存少于 64GB 时，模型无法完整驻留（需要更小的量化，但质量会下降）；
+      显存少于 24GB 时需要提高 <code>--n-cpu-moe</code>，速度会明显下降。
+    </p>
   </div>
 </section>
 
