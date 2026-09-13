@@ -72,6 +72,37 @@
 
 ---
 
+## 先下载模型 / Get the model
+
+本方案使用的模型与配套文件，全部来自公开的 Hugging Face 仓库（[Qwen Community License 1.0](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/main/LICENSE)）：
+
+| 文件 | 说明 | 大小 | 来源 |
+|---|---|---|---|
+| ⭐ **AD-3.84bpw-IQ4_XS-M64** | **主模型**（28 分片） | **84.9 GB** | [**AtomicChat/Qwen3.8-Flash-Next-GGUF**](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) |
+| mmproj-Qwen3.8-Flash-Next-F16.gguf | 视觉投影（图像识别，可选） | 0.85 GB | [同一仓库](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) |
+| llama.cpp | 推理引擎（需支持 Qwen3.8-Flash-Next 架构的构建） | — | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) |
+| Qwen/Qwen3.8-Flash-Next | 原始权重（仅参考，无需下载） | — | [Qwen 官方](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) |
+
+```bash
+# 下载主模型 + 视觉投影（支持断点续传）
+pip install -U "huggingface_hub[cli]"
+hf download AtomicChat/Qwen3.8-Flash-Next-GGUF \
+  --include "*3.84bpw*" --include "*mmproj*" \
+  --local-dir D:\models\Qwen3.8-Flash-Next
+```
+
+> [!IMPORTANT]
+> **务必选择 AtomicChat 的 `-M64` 版本，不要用其他发布方的同类量化。**
+>
+> 区别不在位宽，而在**分片布局**：只有 AtomicChat 把 N-gram 表（35.8 GB）放进**独立分片**。
+> 其他发布方（如 unsloth 的 UD 系列）把表与专家混装 —— 一旦该分片被访问，**整片（几十 GB）都会被锁进内存**，在 64 GB 机器上直接压垮。
+>
+> 实测对比：混淆分片的量化会出现"长对话到 60K~100K token 时静默崩溃"；AtomicChat 版本可塞满整个 256K 上下文稳定运行。
+
+**硬件前提**：24GB 显存 + 64GB 内存 + NVMe SSD（本方案的实测配置）。
+
+---
+
 ## 三分钟上手 / Quick start
 
 ### 1. 启动
