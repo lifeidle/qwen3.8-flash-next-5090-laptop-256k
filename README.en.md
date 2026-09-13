@@ -72,6 +72,37 @@ This repo documents the **complete tuning journey** from scratch: quant selectio
 
 ---
 
+## Get the model
+
+All model files come from public Hugging Face repos ([Qwen Community License 1.0](https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/main/LICENSE)):
+
+| File | Description | Size | Source |
+|---|---|---|---|
+| ⭐ **AD-3.84bpw-IQ4_XS-M64** | **Main model** (28 shards) | **84.9 GB** | [**AtomicChat/Qwen3.8-Flash-Next-GGUF**](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) |
+| mmproj-Qwen3.8-Flash-Next-F16.gguf | Vision projector (optional) | 0.85 GB | [Same repo](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) |
+| llama.cpp | Inference engine (needs a build with Qwen3.8-Flash-Next support) | — | [ggml-org/llama.cpp](https://github.com/ggml-org/llama.cpp) |
+| Qwen/Qwen3.8-Flash-Next | Original weights (reference only) | — | [Qwen official](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) |
+
+```bash
+# Download main model + vision projector (resumable)
+pip install -U "huggingface_hub[cli]"
+hf download AtomicChat/Qwen3.8-Flash-Next-GGUF \
+  --include "*3.84bpw*" --include "*mmproj*" \
+  --local-dir D:\models\Qwen3.8-Flash-Next
+```
+
+> [!IMPORTANT]
+> **Use the AtomicChat `-M64` variant — not other publishers' similar quants.**
+>
+> The difference isn't bit-width, it's **shard layout**: only AtomicChat puts the N-gram table (35.8 GB) in **its own shards**.
+> Other publishers (e.g. unsloth's UD series) mix the table in with the experts — touching that shard pulls the **entire shard** (tens of GB) into RAM, which crushes a 64 GB machine.
+>
+> Measured: mixed-shard quants silently crash on long conversations at 60K–100K tokens; the AtomicChat build fills the entire 256K context stably.
+
+**Hardware prerequisites**: 24 GB VRAM + 64 GB RAM + NVMe SSD (the configuration measured here).
+
+---
+
 ## Quick start
 
 ### 1. Launch
