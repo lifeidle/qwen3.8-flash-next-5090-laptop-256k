@@ -3,6 +3,8 @@
 > **TL;DR (EN)**: MTP acceptance was 0% on every configuration with no visible error. Root cause: 20 of 31 drafter weight files were silently corrupted at download time — an HF mirror ignored the HTTP Range header, and the fetch tool saved the first n_bytes of the response, which was the safetensors shard's *header*, not the tensors. Length and sha256 checks both passed (they verify "the bytes you got", not "you got the right bytes"). Detection: real tensor files never start with a safetensors header. Fix: re-fetch (see `tools/refetch_mtp.py`), acceptance went 0% → 70.8%. Filed upstream as [Niko1221/Strata#327](https://github.com/Niko1221/Strata/issues/327).
 >
 > 中文完整复盘如下。English readers: the TL;DR above plus the [upstream issue](https://github.com/Niko1221/Strata/issues/327) carries the essentials; the Chinese sections add the full investigation trail.
+>
+> **UPDATE 2026-10-02**: confirmed by the author and **fixed in [Strata v0.1.32](https://github.com/Niko1221/Strata/releases/tag/v0.1.32)** — `mtp_fetch` now requires HTTP 206 with a matching `Content-Range`, checks per-tensor SHA-256 against the pinned revision, and re-fetches any corrupt tensor. Our report's two suggested checks both made it into the fix.
 
 - **上游 issue**：[Niko1221/Strata#327](https://github.com/Niko1221/Strata/issues/327)
 - **影响**：Q2_0 / IQ3_XXS / Coder IQ1_M 三个量化版共用同一份草稿层权重，全部中招
