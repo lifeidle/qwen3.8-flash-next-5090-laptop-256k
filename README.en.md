@@ -17,11 +17,11 @@
 
 ## ⚡ Strata engine era — 26 measured rounds · 7 quant tiers screened · 25+ parameter sweeps · 25 → 93.5 tok/s
 
-**The screening**: 2 engine families (llama.cpp b10840/b10889, Strata 0.1.27/0.1.28), 7 quant tiers (AD 3.84bpw / IQ1_M / Q2_0 / IQ2_XS / IQ3_XXS / IQ3_S / BF16), 25+ parameter sweep points, 12 hypotheses eliminated one by one — landing on two "bests":
+**The screening**: 2 engine families (llama.cpp b10840/b10889, Strata 0.1.27/0.1.28), 7 quant tiers (AtomicChat AD-3.84bpw / ISTA-DASLab Coder IQ1_M / Q2_0 / IQ2_XS / IQ3_XXS / IQ3_S / Qwen BF16), 25+ parameter sweep points, 12 hypotheses eliminated one by one — landing on two "bests":
 
-- **Speed-first**: Q2_0 full · **93.5 tok/s** (3.7x over the llama.cpp era; matches the desktop 5070 reference)
-- **Quality-first**: IQ3_XXS full · 77.4 tok/s (74.4 tok/s at 256K + Vision, the daily config)
-- Bonus: Coder IQ1_M (62.5 tok/s, half the RAM — multi-instance / extra-long context backup)
+- **Speed-first**: ISTA-DASLab GSQ-RCO Q2_0 (full 512-expert) · **93.5 tok/s** (3.7x over the llama.cpp era; matches the desktop 5070 reference)
+- **Quality-first**: ISTA-DASLab GSQ-RCO IQ3_XXS (full 512-expert) · 77.4 tok/s (74.4 tok/s at 256K + Vision, the daily config)
+- Bonus: ISTA-DASLab Coder IQ1_M (256/512-expert pruned; 62.5 tok/s, half the RAM — multi-instance / extra-long context backup)
 
 ![speed comparison](./assets/speed-comparison.svg)
 
@@ -67,28 +67,35 @@
 
 **4 model repos, 7 quant tiers** were involved end to end.
 
+> **Vendors & quantization schools at a glance**
+>
+> - **ISTA-DASLab** (Deep Algorithms and Systems Lab at the Institute of Science and Technology Austria — the group behind GPTQ and QuIP#, among the most authoritative teams in low-bit quantization) — the main repo this project uses. Their **GSQ** (Gumbel-Softmax Quantization: scalar quantization approaching VQ accuracy at 2-3 bits) and **RCO** (Riemannian Constrained Optimization: per-tensor bit allocation under a total budget) are both published methods; together they produce the GSQ-RCO series
+> - **AtomicChat** — the AD family of per-layer dynamic-precision quants (AD-5.00bpw-Q5_K_M / AD-4.27bpw-Q4_K_M / AD-3.84bpw-IQ4_XS-M64); the main supplier during the llama.cpp era
+> - **Unsloth** (UD family) — entered the candidate pool, eliminated after a size/shard evaluation
+> - **The Qwen team** (Alibaba) — the original Qwen3.8-Flash-Next model (176B MoE, hybrid GDN/QSA architecture) and the only source of the MTP drafter weights
+
 | # | Model / quant | Effective | Repo | Status |
 |---|---|---|---|---|
 | 1 | AtomicChat AD-3.84bpw-IQ4_XS-M64 | 3.84 bpw | [AtomicChat/Qwen3.8-Flash-Next-GGUF](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) | llama.cpp era main |
-| 2 | ISTA GSQ-RCO **Q2_0** | ~2.2 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF) | ✅ **active (speed)** |
-| 3 | ISTA GSQ-RCO **IQ3_XXS** | ~3.1 bpw | same repo | ✅ **active (quality)** |
-| 4 | ISTA GSQ-RCO IQ3_S | ~3.44 bpw | same repo | ⛔ evaluated, rejected |
-| 5 | ISTA GSQ-RCO IQ2_XS | ~2.5 bpw | same repo | ⛔ evaluated, not deployed |
-| 6 | Coder **IQ1_M** (256 experts) | 1.89 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF) | ✅ backup (low-RAM) |
-| 7 | Qwen BF16 official checkpoint | 16 bpw | [Qwen/Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) | 🔧 MTP weights source only |
+| 2 | ISTA-DASLab GSQ-RCO **Q2_0** | ~2.2 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF) | ✅ **active (speed)** |
+| 3 | ISTA-DASLab GSQ-RCO **IQ3_XXS** | ~3.1 bpw | same repo | ✅ **active (quality)** |
+| 4 | ISTA-DASLab GSQ-RCO IQ3_S | ~3.44 bpw | same repo | ⛔ evaluated, rejected |
+| 5 | ISTA-DASLab GSQ-RCO IQ2_XS | ~2.5 bpw | same repo | ⛔ evaluated, not deployed |
+| 6 | ISTA-DASLab Coder **IQ1_M** (256/512-expert pruned) | 1.89 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF) | ✅ backup (low-RAM) |
+| 7 | Qwen (Alibaba) BF16 official checkpoint | 16 bpw | [Qwen/Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) | 🔧 MTP weights source only |
 | 8 | mmproj BF16 Vision Encoder | — | in the GSQ-RCO repo | ✅ active |
 
 **1️⃣ AtomicChat AD-3.84bpw-IQ4_XS-M64** — dynamic per-layer precision at ~4 bits; the only community-validated quant that ran the 177B MoE in 24 GB via llama.cpp. Outcome: 22-25 tok/s, exposing llama.cpp's single-core CPU ceiling. Led to the engine switch.
 
-**2️⃣ ISTA GSQ-RCO Q2_0 ★ (speed king)** — 2-bit backed by two published methods (GSQ + RCO per-tensor budget allocation); smallest expert blobs → the most VRAM hot-expert slots (13,212, 98%+ hit rate) → MTP gains fully realized. Outcome: **93.5 tok/s** (spec_min_p=0.3), acceptance 44-54%, matches the desktop 5070 reference.
+**2️⃣ ISTA-DASLab GSQ-RCO Q2_0 ★ (speed king)** — 2-bit backed by two published methods (GSQ + RCO per-tensor budget allocation); smallest expert blobs → the most VRAM hot-expert slots (13,212, 98%+ hit rate) → MTP gains fully realized. Outcome: **93.5 tok/s** (spec_min_p=0.3), acceptance 44-54%, matches the desktop 5070 reference.
 
-**3️⃣ ISTA GSQ-RCO IQ3_XXS (quality line, current daily)** — a full bit more precision; also the best drafter (59-71% acceptance — mind that its spec_min_p peak is 0.7, not Q2_0's 0.3). Outcome: **77.4 tok/s** (32K) / 74.4 (256K+Vision). The 42.9 GB arena leaves comfortable headroom for 256K on 64 GB RAM.
+**3️⃣ ISTA-DASLab GSQ-RCO IQ3_XXS (quality line, current daily)** — a full bit more precision; also the best drafter (59-71% acceptance — mind that its spec_min_p peak is 0.7, not Q2_0's 0.3). Outcome: **77.4 tok/s** (32K) / 74.4 (256K+Vision). The 42.9 GB arena leaves comfortable headroom for 256K on 64 GB RAM.
 
-**4️⃣ ISTA GSQ-RCO IQ3_S (evaluated, rejected)** — 3.44 bpw, upstream reports it *matches the full BF16 model* — the best quality of all. But its 50.3 GB pinned arena + 3.1 GB KV at 256K leaves ~10 GB for the OS on a 64 GB machine; upstream itself flags "64 GB PC with little else running". With 256K as a hard requirement, the risk was unacceptable. **Revival condition: a RAM upgrade to 96 GB.**
+**4️⃣ ISTA-DASLab GSQ-RCO IQ3_S (evaluated, rejected)** — 3.44 bpw, upstream reports it *matches the full BF16 model* — the best quality of all. But its 50.3 GB pinned arena + 3.1 GB KV at 256K leaves ~10 GB for the OS on a 64 GB machine; upstream itself flags "64 GB PC with little else running". With 256K as a hard requirement, the risk was unacceptable. **Revival condition: a RAM upgrade to 96 GB.**
 
-**5️⃣ ISTA GSQ-RCO IQ2_XS (evaluated, not deployed)** — slightly better than Q2_0 at nearly the same speed. Its quality increment sits between Q2_0 and IQ3_XXS; when quality became the priority we jumped straight to IQ3_XXS, so the middle tier had no deployment window.
+**5️⃣ ISTA-DASLab GSQ-RCO IQ2_XS (evaluated, not deployed)** — slightly better than Q2_0 at nearly the same speed. Its quality increment sits between Q2_0 and IQ3_XXS; when quality became the priority we jumped straight to IQ3_XXS, so the middle tier had no deployment window.
 
-**6️⃣ Coder IQ1_M (low-RAM backup)** — upstream pruned 512→256 experts (keeping code/tool/vision experts), halving the arena to 23.4 GB while storing at "IQ3_S-like" 3.5-bit density. Outcome: 62.5 tok/s post-MTP-fix; weaker than the full model outside coding, as expected from the pruning.
+**6️⃣ ISTA-DASLab Coder IQ1_M (low-RAM backup)** — upstream pruned 512→256 experts (keeping code/tool/vision experts), halving the arena to 23.4 GB while storing at "IQ3_S-like" 3.5-bit density. Outcome: 62.5 tok/s post-MTP-fix; weaker than the full model outside coding, as expected from the pruning.
 
 **7️⃣ Qwen BF16 official checkpoint (MTP weights source only)** — 354 GB, not locally deployable. Downloaded solely because the MTP drafter weights (`mtp.*` tensors) exist only in the BF16 checkpoint — pulled 5.2 GB via HTTP Range instead of the full 360 GB. This is also what triggered the [corruption incident](./docs/mtp-corruption-postmortem.md) and the resulting detector/fixer tooling.
 
