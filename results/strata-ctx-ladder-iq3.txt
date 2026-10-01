@@ -1,0 +1,26 @@
+Context ladder: IQ3_XXS + Vision + MTP on Strata 0.1.28 (256K works on 64 GB RAM)
+==================================================================================
+KV streaming (--kv-resident 32768): KV lives in pinned RAM, VRAM keeps a 32K hot
+window per QSA layer. KV RAM = ctx * 13 * 1056 bytes (12 QSA layers + the drafter).
+
+| ctx     | expert slots | KV pinned RAM | speed (median, cache-busted) | note                          |
+|---------|--------------|---------------|------------------------------|-------------------------------|
+| 32768   | 9,588        | 0 (all VRAM)  | 77.4 tok/s                   | fastest                       |
+| 65536   | 9,559        | 0.77 GiB      | 65.7 tok/s                   |                               |
+| 131072  | 9,487        | 1.55 GiB      | 64.5 tok/s                   | prefill 2,527 tok/s           |
+| 262144  | 9,350        | 3.09 GiB      | 65.1 tok/s                   | works; setup refuses it       |
+
+Long-context prefill at 128K config:
+  14,474 prompt tokens in 6.7 s  ->  ~2,527 tok/s prefill
+
+KV streaming VRAM hit rate (hot window):
+  131K context: 99.7% of block reads hit VRAM
+  262K context: 95.6% (long-range KV reads spill to RAM more often)
+
+Findings:
+  * 65K/128K/256K speeds are within noise: the ~-16% streaming cost is FIXED,
+    independent of length. Either run 32K (fastest) or go straight to 256K.
+  * The expert cache loses only 2.5% of slots from 32K to 256K.
+  * setup.py refuses IQ3_XXS at 262K on <90 GB RAM (forces 131072). On 64 GB RAM
+    with a 42.9 GB pinned arena it is in fact stable - test beyond setup's limits.
+  * MTP stayed healthy at every rung (46-59% draft acceptance).
