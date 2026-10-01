@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop
 
-**24 GB VRAM + 64 GB RAM · 256K Context · 25 tok/s · Vision Enabled**
+**24 GB VRAM + 64 GB RAM · 256K Context · 93.5 tok/s (Strata) / 25 tok/s (llama.cpp) · Vision Enabled**
 
 [中文 →](./README.md) ｜ **English**
 
@@ -12,6 +12,28 @@
 ![Quant](https://img.shields.io/badge/quant-AD--3.84bpw-bf8700?style=flat-square)
 ![Vision](https://img.shields.io/badge/vision-enabled-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+
+---
+
+## ⚡ Oct 2026 update: Strata engine — 25 → 93.5 tok/s (3.7x)
+
+The llama.cpp log ends here. I then re-tested everything on the third-party [Strata](https://github.com/Niko1221/Strata) engine, which structurally fixed the single-core CPU bottleneck — **GPU and CPU utilization are both near 100% for the first time**:
+
+| Quant (GSQ-RCO) | Effective | llama.cpp | Strata (post-MTP-fix, tuned) |
+|---|---|---|---|
+| Coder IQ1_M (256 experts) | 1.89 bpw | — | 62.5 tok/s |
+| Q2_0 full (512 experts) | ~2.2 bpw | 25 tok/s | **93.5 tok/s** |
+| IQ3_XXS full (512 experts) | ~3.1 bpw | — | **77.4 tok/s** (74.4 at 256K+Vision) |
+
+Four highlights from this round:
+
+1. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header and returned whole shards; the tool kept the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance went 0% → 70.8%
+2. **The spec_min_p peak moves per model**: Q2_0 peaks at 0.3, IQ3_XXS at 0.7 (the better the drafter, the higher the bar) — re-sweep on every model change
+3. **256K context ladder**: with KV streaming, 65K/128K/256K cost almost nothing (256K verified stable on 64 GB RAM; setup's 128K cap is conservative)
+4. **Vision + 256K coexist**: ≤1,024 tokens per image, 250+ images fit in one conversation
+
+> 📘 **Full Strata log (English)** → [docs/strata-log.en.md](./docs/strata-log.en.md) ｜ [中文](./docs/strata-log.zh.md)
+> 🧪 **Data** → [results/strata-*.txt](./results/strata-mtp-repair.txt)　🛠 **Corruption detector/fixer** → [tools/](./tools/check_dense.py)
 
 ---
 
