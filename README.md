@@ -1,6 +1,6 @@
 # Qwen3.8-Flash-Next 177B on an RTX 5090 Laptop
 
-**24 GB VRAM + 64 GB RAM · 256K Context · 25 tok/s · Vision Enabled**
+**24 GB VRAM + 64 GB RAM · 256K Context · 93.5 tok/s (Strata) / 25 tok/s (llama.cpp) · Vision Enabled**
 
 **中文** ｜ [English →](./README.en.md)
 
@@ -12,6 +12,28 @@
 ![Quant](https://img.shields.io/badge/quant-AD--3.84bpw-bf8700?style=flat-square)
 ![Vision](https://img.shields.io/badge/vision-enabled-orange?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)
+
+---
+
+## ⚡ 2026-10 更新：Strata 引擎实测 —— 25 → 93.5 tok/s（3.7 倍）
+
+llama.cpp 的部署实录到此为止。之后换用第三方引擎 [Strata](https://github.com/Niko1221/Strata) 完整重测，结构性突破了 llama.cpp 时代的单核 CPU 瓶颈——**GPU 与 CPU 占用率第一次同时占满**：
+
+| 量化（GSQ-RCO） | 有效精度 | llama.cpp | Strata（MTP 修复后最优） |
+|---|---|---|---|
+| Coder IQ1_M（256 专家） | 1.89 bpw | — | 62.5 tok/s |
+| Q2_0 完整版（512 专家） | ~2.2 bpw | 25 tok/s | **93.5 tok/s** |
+| IQ3_XXS 完整版（512 专家） | ~3.1 bpw | — | **77.4 tok/s**（256K+Vision 下 74.4） |
+
+本次实录的四个重点：
+
+1. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加探针定位 NaN → 重拉修复 → MTP 接受率 0% → 70.8%
+2. **spec_min_p 峰值随草稿质量漂移**：Q2_0 峰在 0.3，IQ3_XXS 峰在 0.7（草稿质量越高阈值越可以从严），换模型必须重扫
+3. **256K 上下文阶梯**：KV streaming 下 65K/128K/256K 速度几乎无损（64GB 内存实测 256K 稳定，官方 setup 的 128K 上限过于保守）
+4. **Vision + 256K 并存**：每图 ≤1024 token，单会话理论上可塞 250+ 张图
+
+> 📘 **Strata 完整实录（中文）** → [docs/strata-log.zh.md](./docs/strata-log.zh.md) ｜ [English](./docs/strata-log.en.md)
+> 🧪 **数据** → [results/strata-*.txt](./results/strata-mtp-repair.txt)　🛠 **权重损坏检测/修复工具** → [tools/](./tools/check_dense.py)
 
 ---
 
