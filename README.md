@@ -34,6 +34,37 @@
 
 ![spec_min_p sweep](./assets/spec-minp-sweep.svg)
 
+## 🚀 部署与启动（照着做即可）
+
+> 引擎 [Strata](https://github.com/Niko1221/Strata)（MIT License），Windows/Linux 均可；只需 NVIDIA 驱动，Python 3.12 由安装器自动装到用户目录（无需管理员权限）。
+
+**① 安装引擎**：按 Strata 官方 README 获取引擎（下载 release 的 `strata-windows-x64.zip` 解压，或 git clone 源码仓库）。
+
+**② 一条命令完成模型打包与配置**（以我们的两个现役模型为例）：
+
+```bat
+cd Strata/app
+
+:: 质量优先（本仓库当前日常）：IQ3_XXS
+python setup.py --family qwen --model IQ3_XXS --context 131072 --vision yes --port 8081 --yes --gguf-dir "D://models//Qwen3.8-Flash-Next-GSQ-RCO-GGUF"
+
+:: 速度优先：Q2_0
+python setup.py --family qwen --model Q2_0 --context 32768 --vision yes --port 8081 --yes --gguf-dir "D://models//Qwen3.8-Flash-Next-GSQ-RCO-GGUF"
+```
+
+- `--gguf-dir` 指向你**已下载好的** GGUF 分片目录；不加这个参数 setup 会重新下载数十 GB
+- 首次运行会自动安装 Python 3.12、创建独立 .venv、下载引擎、打包专家 profile（也可双击 `START-HERE.bat` 走交互式）
+
+**③ 启动**：再次运行同一条命令或双击 `START-HERE.bat`，浏览器打开 `http://127.0.0.1:8081/` 即可聊天与贴图（OpenAI / Anthropic API 同端口）。
+
+**④ 想要 256K 上下文**：setup 出于保守会把 IQ3 系压到 128K。实测 64GB 内存下 256K 稳定——安装后编辑 `strata-iq3_xxs.json`：`--max-context` 改 `262144`，并追加 `"--kv-resident", "32768"`（KV 进内存、显存只留 32K 热窗），重启生效。详见[上下文阶梯数据](./results/strata-ctx-ladder-iq3.txt)。
+
+**⑤ 验证 MTP 在工作**：log 里 `drafts accepted` 必须非 0。若是 `0 of 0` 或 `0 of N`，先跑 [tools/check_dense.py](./tools/check_dense.py) 体检草稿层权重——大概率是下载损坏（完整方法见[事故复盘](./docs/mtp-corruption-postmortem.md)）。
+
+**License 与合规**：引擎 Strata 为 MIT；llama.cpp / ggml 为 MIT；模型权重 license 以各 HF 页面为准（GSQ-RCO 系列页标注 Apache-2.0，继承 base model）。本仓库只含自测数据与工具，**不再分发任何模型权重**；所有商标归各自所有者。
+
+---
+
 ### Strata 时代 18 轮调优明细
 
 | 轮 | 动作 | 结果 | 决策 |
