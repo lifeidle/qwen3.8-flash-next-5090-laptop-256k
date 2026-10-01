@@ -1,0 +1,30 @@
+GPU + CPU utilization: the architectural difference vs llama.cpp
+=================================================================
+Same laptop, same model family, two engines.
+
+llama.cpp era (3.84bpw AD quant, 22-25 tok/s):
+  * CPU: one hot core pinned at ~100% (the offload loop is effectively serial)
+  * GPU: 20-40% utilization; the 24 GB of VRAM mostly holds weights that wait
+  * Every token's experts are read/computed on the CPU path before the GPU sees work
+  * Adding threads does not fix it: the bottleneck is the dispatch structure
+
+Strata (three-tier memory + hit-path):
+  * VRAM: hot-expert cache (92-98%+ routing hit rate), 32K KV hot window, MTP drafter
+  * RAM: full expert arena (pinned), cold-KV store (streaming)
+  * CPU: 23-worker expert pool + the host thread handle cache misses
+  * GPU: computes resident experts (moe_hit kernels), the drafter, attention, head
+  * MTP drafting overlaps the main pipeline; PLE table reads are async I/O
+
+Observed while decoding (IQ3_XXS 256K, vision on, MTP at 70.8% acceptance):
+  * GPU: sustained near-100% (per-layer kernels back-to-back, no idle gaps)
+  * CPU: all 24 threads engaged, the pool drain phase ~1.9 ms/token vs 15.5 ms/window
+  * The two sides overlap: the pool stages the NEXT window's misses while the GPU
+    verifies the current one ("R4 overlap"), so neither waits on the other
+
+Why this matters more than any knob:
+  In the old setup a 3.7x speedup would have required either a faster CPU or a
+  smaller model. Here the same 24 GB + 64 GB just stopped wasting one of its two
+  processors. The engine's own counters agree:
+    R4 expert-cache hits   238,285 of 242,448 = 98.3%
+    the CPU expert pool    2.7 ms/token over 48 layers
+    verify window          15.5 ms/round at T=1 -> 23.4 ms/token wall clock
