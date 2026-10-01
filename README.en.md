@@ -28,7 +28,7 @@
 ### Four headline findings
 
 1. **GPU and CPU saturate together, for the first time**: llama.cpp pinned one CPU core at 100% while the GPU idled at 20-40%; Strata's three-tier scheme (hot-expert VRAM cache + CPU pool + overlapping MTP pipeline) loads both processors at once — the structural reason behind the 3.7x
-2. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header; the tool saved the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance 0% → 70.8%. Full postmortem: [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md) (filed upstream as [Strata#327](https://github.com/Niko1221/Strata/issues/327))
+2. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header; the tool saved the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance 0% → 70.8%. Full postmortem: [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md) (filed upstream as [Strata#327](https://github.com/Niko1221/Strata/issues/327), **confirmed and fixed in v0.1.32**: HTTP 206 + Content-Range enforced, per-tensor SHA-256 against the pinned revision, corrupt tensors auto re-fetched)
 3. **The spec_min_p peak moves per model**: Q2_0 peaks at 0.3, IQ3_XXS at 0.7 — re-sweep on every model change (curve below)
 4. **256K context is nearly free**: with KV streaming, 65K/128K/256K cost the same; verified stable on 64 GB RAM. Vision coexists with 256K (≤1,024 tokens/image — 250+ images per conversation)
 
@@ -60,6 +60,11 @@ python setup.py --family qwen --model Q2_0 --context 32768 --vision yes --port 8
 **④ Want 256K context**: setup conservatively caps IQ3 models at 128K. We verified 256K is stable on 64 GB RAM — edit `strata-iq3_xxs.json` after setup: set `--max-context` to `262144` and add `"--kv-resident", "32768"` (KV in RAM, a 32K hot window in VRAM), restart. Data: [context ladder](./results/strata-ctx-ladder-iq3.txt).
 
 **⑤ Verify MTP is alive**: the log must show non-zero `drafts accepted`. If you see `0 of 0` or `0 of N`, run [tools/check_dense.py](./tools/check_dense.py) on the drafter weights first — most likely a corrupted download (full method in the [postmortem](./docs/mtp-corruption-postmortem.md)).
+
+**⑥ Thinking & concurrency (read before wiring up a client)**:
+- **Thinking defaults to xhigh — the highest tier**, hard-coded in the chat template. The ladder is `xhigh` (default) > `medium` > `low`; there is no "high" (it silently escalates to xhigh). For everyday speed pass `reasoning_effort: low` ("brief and straight to the point"); keep the default for hard reasoning
+- **Concurrency = none, FIFO serial**: the HTTP layer is threaded and accepts parallel connections, but one FIFO lock means a single decode at any moment — later requests queue (nothing dropped or refused; `GET /status` shows the queue). Invisible for one user; a second client waits its turn
+- **max_tokens**: the engine fills a default if you omit it, but with a thinking model always pass ≥600 explicitly
 
 **License & compliance**: the Strata engine is MIT; llama.cpp / ggml are MIT; model-weight licenses follow each HF page (the GSQ-RCO pages are tagged Apache-2.0, inherited from the base model). This repo contains only our measurement data and tools — **no model weights are redistributed**; all trademarks belong to their owners.
 
