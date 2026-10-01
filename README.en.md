@@ -27,7 +27,7 @@ The llama.cpp log ends here. I then re-tested everything on the third-party [Str
 
 Four highlights from this round:
 
-1. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header and returned whole shards; the tool kept the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance went 0% → 70.8%
+1. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header and returned whole shards; the tool kept the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance went 0% → 70.8%. Full postmortem: [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md) (filed upstream as [Strata#327](https://github.com/Niko1221/Strata/issues/327))
 2. **The spec_min_p peak moves per model**: Q2_0 peaks at 0.3, IQ3_XXS at 0.7 (the better the drafter, the higher the bar) — re-sweep on every model change
 3. **256K context ladder**: with KV streaming, 65K/128K/256K cost almost nothing (256K verified stable on 64 GB RAM; setup's 128K cap is conservative)
 4. **Vision + 256K coexist**: ≤1,024 tokens per image, 250+ images fit in one conversation
