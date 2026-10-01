@@ -1,0 +1,43 @@
+Strata MTP repair: before/after (IQ3_XXS and Q2_0 share the same drafter weights)
+=================================================================================
+Engine: Strata 0.1.28, Qwen3.8-Flash-Next GSQ-RCO, RTX 5090 Laptop 24GB + 64GB RAM
+
+Root cause: 20 of 31 mtp.* tensor files fetched via HTTP Range were actually the
+beginning of their safetensors shard (JSON header + unrelated data) because some
+responses ignored the Range header and returned 200 with the whole file; the tool
+kept the first n_bytes. The manifest sha256 (over downloaded bytes) cannot catch this.
+
+Detection: a genuine tensor's raw file does not start with [u64 header_len][b'{"'].
+
+Engine log, before the fix (drafter weights are garbage -> forward pass = NaN):
+
+  strata serve: ... drafts accepted 0 of 0, 1 checkpoints      (T=1, never proposed)
+  strata serve: ... drafts accepted 0 of 765, 1 checkpoints    (spec_min_p=0, forced T=4)
+  STRATA_MTP_DIAG r8:   dprob=nan/0.0000/0.0000 drafts=0,0,0 outv=310,310,310
+  STRATA_MTP_DIAG r16:  dprob=nan/0.0000/0.0000 drafts=0,0,0 outv=41979,41979,1303
+  ... (128 rounds, all identical)
+
+  CLI cross-check (independent code path):
+  speculation   128 rounds of 6, drafts accepted 0 of 381 (0.000), 1.00 tokens per round
+  accepted per round  0:128 1:0 2:0 3:0 4:0 5:0
+  decode        128 tokens in 3000.3 ms -> 42.66 tok/s
+
+Engine log, after re-fetching the 20 corrupted files and re-packing:
+
+  strata serve: ... drafts accepted 245 of 596, 1 checkpoints   (41.1%)
+  strata serve: ... drafts accepted 439 of 725, 1 checkpoints   (60.6%, long output)
+  strata serve: ... drafts accepted 185 of 313, 1 checkpoints   (59.1%)
+
+  CLI cross-check (same forced-window protocol as above):
+  speculation   66 rounds of 6, drafts accepted 62 of 195 (0.318), 1.94 tokens per round
+  accepted per round  0:33 1:15 2:7 3:11 4:0 5:0
+  decode        128 tokens in 1830.8 ms -> 69.92 tok/s   (+64% vs broken drafter)
+
+dense.bin weight check, before vs after (check_dense.py):
+
+  BEFORE (broken)                                   AFTER (re-fetched)
+  mlp.gate.weight                 bf16 maxabs=2.1e+37   bf16 maxabs=1.547
+  mlp_hyper_connection.hc_norm    f32  mean=inf         f32  maxabs=13.38 mean=2.731
+  self_attn.q_proj.weight         q8_0 scale_inf=57     q8_0 scale_inf=0
+  pre_fc_norm_embedding.weight    f32  maxabs=2.1e+37   f32  maxabs=0.7246
+  (20 of 29 non-expert tensors were garbage; all 29 clean after re-fetch)
