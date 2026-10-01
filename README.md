@@ -28,7 +28,7 @@
 ### 四个重点发现
 
 1. **GPU 与 CPU 第一次同时占满**：llama.cpp 时代 CPU 单核钉死 100%、GPU 闲 20-40%；Strata 三层架构（热专家显存缓存 + CPU 池 + MTP 流水线重叠）让两个处理器同时满载——这是 3.7 倍提升的结构性根因
-2. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加 NaN 探针定位 → 重拉修复 → MTP 接受率 0% → 70.8%。完整复盘：[docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md)（已报上游 [Strata#327](https://github.com/Niko1221/Strata/issues/327)）
+2. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加 NaN 探针定位 → 重拉修复 → MTP 接受率 0% → 70.8%。完整复盘：[docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md)（已报上游 [Strata#327](https://github.com/Niko1221/Strata/issues/327)，**作者确认并于 v0.1.32 修复**：强制校验 HTTP 206 + Content-Range、对照官方 pinned 版本逐张量 sha256、损坏自动重拉）
 3. **spec_min_p 峰值随草稿质量漂移**：Q2_0 峰在 0.3，IQ3_XXS 峰在 0.7——换模型必须重扫（见下方曲线）
 4. **256K 上下文几乎免费**：KV streaming 下 65K/128K/256K 速度几乎相同，64GB 内存实测 256K 稳定；Vision 与 256K 并存（每图 ≤1024 token，单会话可塞 250+ 张图）
 
@@ -60,6 +60,11 @@ python setup.py --family qwen --model Q2_0 --context 32768 --vision yes --port 8
 **④ 想要 256K 上下文**：setup 出于保守会把 IQ3 系压到 128K。实测 64GB 内存下 256K 稳定——安装后编辑 `strata-iq3_xxs.json`：`--max-context` 改 `262144`，并追加 `"--kv-resident", "32768"`（KV 进内存、显存只留 32K 热窗），重启生效。详见[上下文阶梯数据](./results/strata-ctx-ladder-iq3.txt)。
 
 **⑤ 验证 MTP 在工作**：log 里 `drafts accepted` 必须非 0。若是 `0 of 0` 或 `0 of N`，先跑 [tools/check_dense.py](./tools/check_dense.py) 体检草稿层权重——大概率是下载损坏（完整方法见[事故复盘](./docs/mtp-corruption-postmortem.md)）。
+
+**⑥ 思考与并发（接入客户端前必读）**：
+- **思考默认 = xhigh（最高档）**——聊天模板出厂写死。档位体系：`xhigh`（默认）> `medium` > `low`；没有 high 档（会被自动升为 xhigh）。日常想快可传 `reasoning_effort: low`（思考变"简短直给"，出答案明显更快），复杂推理保持默认
+- **并发 = 无，FIFO 串行**：HTTP 层多线程接得住并发连接，但推理层一把 FIFO 锁——同一时刻只有一条 decode 在跑，后来的请求排队等待（不丢不拒绝，`GET /status` 可看队列）。单人使用无感；多人/多客户端同时用会依次等
+- **默认 max_tokens**：客户端不传时引擎会给默认值，但思考型模型建议始终显式传 ≥600
 
 **License 与合规**：引擎 Strata 为 MIT；llama.cpp / ggml 为 MIT；模型权重 license 以各 HF 页面为准（GSQ-RCO 系列页标注 Apache-2.0，继承 base model）。本仓库只含自测数据与工具，**不再分发任何模型权重**；所有商标归各自所有者。
 
