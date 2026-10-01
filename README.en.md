@@ -34,6 +34,37 @@
 
 ![spec_min_p sweep](./assets/spec-minp-sweep.svg)
 
+## 🚀 Deploy & launch (follow along)
+
+> Engine [Strata](https://github.com/Niko1221/Strata) (MIT License), Windows/Linux; only an NVIDIA driver is needed. Python 3.12 is installed into your user folder by the installer (no admin rights).
+
+**① Get the engine**: follow the Strata README (download the release `strata-windows-x64.zip`, or git clone the source repo).
+
+**② One command packs the model and writes the config** (our two active models):
+
+```bat
+cd Strata/app
+
+:: quality-first (the daily config in this repo): IQ3_XXS
+python setup.py --family qwen --model IQ3_XXS --context 131072 --vision yes --port 8081 --yes --gguf-dir "D://models//Qwen3.8-Flash-Next-GSQ-RCO-GGUF"
+
+:: speed-first: Q2_0
+python setup.py --family qwen --model Q2_0 --context 32768 --vision yes --port 8081 --yes --gguf-dir "D://models//Qwen3.8-Flash-Next-GSQ-RCO-GGUF"
+```
+
+- `--gguf-dir` must point to a folder with the GGUF shards **you already downloaded**; without it, setup re-downloads tens of GB
+- First run auto-installs Python 3.12, creates an isolated .venv, downloads the engine and packs the expert profile (double-click `START-HERE.bat` for the interactive path)
+
+**③ Launch**: re-run the same command or double-click `START-HERE.bat`, then open `http://127.0.0.1:8081/` (OpenAI / Anthropic APIs on the same port).
+
+**④ Want 256K context**: setup conservatively caps IQ3 models at 128K. We verified 256K is stable on 64 GB RAM — edit `strata-iq3_xxs.json` after setup: set `--max-context` to `262144` and add `"--kv-resident", "32768"` (KV in RAM, a 32K hot window in VRAM), restart. Data: [context ladder](./results/strata-ctx-ladder-iq3.txt).
+
+**⑤ Verify MTP is alive**: the log must show non-zero `drafts accepted`. If you see `0 of 0` or `0 of N`, run [tools/check_dense.py](./tools/check_dense.py) on the drafter weights first — most likely a corrupted download (full method in the [postmortem](./docs/mtp-corruption-postmortem.md)).
+
+**License & compliance**: the Strata engine is MIT; llama.cpp / ggml are MIT; model-weight licenses follow each HF page (the GSQ-RCO pages are tagged Apache-2.0, inherited from the base model). This repo contains only our measurement data and tools — **no model weights are redistributed**; all trademarks belong to their owners.
+
+---
+
 ### The 18 tuning rounds of the Strata era
 
 | R | Action | Result | Decision |
