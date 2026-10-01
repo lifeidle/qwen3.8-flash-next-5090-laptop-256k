@@ -63,6 +63,41 @@
 
 ---
 
+## Model dossier: every quant we touched (strength / why chosen / outcome)
+
+**4 model repos, 7 quant tiers** were involved end to end.
+
+| # | Model / quant | Effective | Repo | Status |
+|---|---|---|---|---|
+| 1 | AtomicChat AD-3.84bpw-IQ4_XS-M64 | 3.84 bpw | [AtomicChat/Qwen3.8-Flash-Next-GGUF](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) | llama.cpp era main |
+| 2 | ISTA GSQ-RCO **Q2_0** | ~2.2 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF) | ✅ **active (speed)** |
+| 3 | ISTA GSQ-RCO **IQ3_XXS** | ~3.1 bpw | same repo | ✅ **active (quality)** |
+| 4 | ISTA GSQ-RCO IQ3_S | ~3.44 bpw | same repo | ⛔ evaluated, rejected |
+| 5 | ISTA GSQ-RCO IQ2_XS | ~2.5 bpw | same repo | ⛔ evaluated, not deployed |
+| 6 | Coder **IQ1_M** (256 experts) | 1.89 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF) | ✅ backup (low-RAM) |
+| 7 | Qwen BF16 official checkpoint | 16 bpw | [Qwen/Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) | 🔧 MTP weights source only |
+| 8 | mmproj BF16 Vision Encoder | — | in the GSQ-RCO repo | ✅ active |
+
+**1️⃣ AtomicChat AD-3.84bpw-IQ4_XS-M64** — dynamic per-layer precision at ~4 bits; the only community-validated quant that ran the 177B MoE in 24 GB via llama.cpp. Outcome: 22-25 tok/s, exposing llama.cpp's single-core CPU ceiling. Led to the engine switch.
+
+**2️⃣ ISTA GSQ-RCO Q2_0 ★ (speed king)** — 2-bit backed by two published methods (GSQ + RCO per-tensor budget allocation); smallest expert blobs → the most VRAM hot-expert slots (13,212, 98%+ hit rate) → MTP gains fully realized. Outcome: **93.5 tok/s** (spec_min_p=0.3), acceptance 44-54%, matches the desktop 5070 reference.
+
+**3️⃣ ISTA GSQ-RCO IQ3_XXS (quality line, current daily)** — a full bit more precision; also the best drafter (59-71% acceptance — mind that its spec_min_p peak is 0.7, not Q2_0's 0.3). Outcome: **77.4 tok/s** (32K) / 74.4 (256K+Vision). The 42.9 GB arena leaves comfortable headroom for 256K on 64 GB RAM.
+
+**4️⃣ ISTA GSQ-RCO IQ3_S (evaluated, rejected)** — 3.44 bpw, upstream reports it *matches the full BF16 model* — the best quality of all. But its 50.3 GB pinned arena + 3.1 GB KV at 256K leaves ~10 GB for the OS on a 64 GB machine; upstream itself flags "64 GB PC with little else running". With 256K as a hard requirement, the risk was unacceptable. **Revival condition: a RAM upgrade to 96 GB.**
+
+**5️⃣ ISTA GSQ-RCO IQ2_XS (evaluated, not deployed)** — slightly better than Q2_0 at nearly the same speed. Its quality increment sits between Q2_0 and IQ3_XXS; when quality became the priority we jumped straight to IQ3_XXS, so the middle tier had no deployment window.
+
+**6️⃣ Coder IQ1_M (low-RAM backup)** — upstream pruned 512→256 experts (keeping code/tool/vision experts), halving the arena to 23.4 GB while storing at "IQ3_S-like" 3.5-bit density. Outcome: 62.5 tok/s post-MTP-fix; weaker than the full model outside coding, as expected from the pruning.
+
+**7️⃣ Qwen BF16 official checkpoint (MTP weights source only)** — 354 GB, not locally deployable. Downloaded solely because the MTP drafter weights (`mtp.*` tensors) exist only in the BF16 checkpoint — pulled 5.2 GB via HTTP Range instead of the full 360 GB. This is also what triggered the [corruption incident](./docs/mtp-corruption-postmortem.md) and the resulting detector/fixer tooling.
+
+**8️⃣ mmproj BF16 Vision Encoder** — 27-layer ViT + projector; ≤1,024 tokens/image, 0.1-0.5 s/image on GPU. Mounted and verified; ~16% text speed cost at 256K+Vision.
+
+---
+
+
+
 ## What this is
 
 Running a **177B-parameter MoE model** on a **consumer laptop** — not just "it loads", but **actually usable day to day**:
