@@ -63,6 +63,73 @@
 
 ---
 
+## 模型档案：我们用过的每一个量化（优势 / 为什么选 / 最终结果）
+
+全程涉及 **4 个模型仓库、7 个量化档位**。总表 + 逐个档案如下。
+
+| # | 模型 / 量化 | 精度 | 仓库 | 状态 |
+|---|---|---|---|---|
+| 1 | AtomicChat AD-3.84bpw-IQ4_XS-M64 | 3.84 bpw | [AtomicChat/Qwen3.8-Flash-Next-GGUF](https://huggingface.co/AtomicChat/Qwen3.8-Flash-Next-GGUF) | llama.cpp 时代主力 |
+| 2 | ISTA GSQ-RCO **Q2_0** | ~2.2 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-GGUF) | ✅ **现役（速度线）** |
+| 3 | ISTA GSQ-RCO **IQ3_XXS** | ~3.1 bpw | 同上 | ✅ **现役（质量线）** |
+| 4 | ISTA GSQ-RCO IQ3_S | ~3.44 bpw | 同上 | ⛔ 评估后否决 |
+| 5 | ISTA GSQ-RCO IQ2_XS | ~2.5 bpw | 同上 | ⛔ 评估后未部署 |
+| 6 | Coder **IQ1_M**（256 专家） | 1.89 bpw | [ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF](https://huggingface.co/ISTA-DASLab/Qwen3.8-Flash-Next-GSQ-RCO-Coder-GGUF) | ✅ 备选（省内存线） |
+| 7 | Qwen BF16 官方 checkpoint | 16 bpw | [Qwen/Qwen3.8-Flash-Next](https://huggingface.co/Qwen/Qwen3.8-Flash-Next) | 🔧 仅作 MTP 权重源 |
+| 8 | mmproj BF16 Vision Encoder | — | GSQ-RCO 仓库内 | ✅ 现役 |
+
+### 1️⃣ AtomicChat AD-3.84bpw-IQ4_XS-M64 —— llama.cpp 时代的主力
+
+- **优势**：4-bit 档少见的"动态逐层精度"量化（AD = AtomicChat Dynamic），精度与显存的平衡点；M64 分片让 llama.cpp 能在 24GB 显存跑通 177B MoE
+- **为什么选**：llama.cpp 时代它是唯一兼顾质量与速度、且社区验证过的选择
+- **结果**：22-25 tok/s。暴露了 llama.cpp 的结构性问题——CPU 单核 100%、GPU 闲 20-40%，任何调参都绕不过去。由此转向 Strata
+
+### 2️⃣ ISTA GSQ-RCO Q2_0 —— 速度王 ★
+
+- **优势**：2-bit 但有 GSQ（Gumbel-Softmax）+ RCO（逐张量精度分配）两篇论文方法背书，2-bit 下逼近矢量量化精度；专家 blob 最小 → 显存能塞最多热专家（13,212 slots，98%+ 命中）
+- **为什么选**：确认 Strata 的 GPU 缓存架构后，专家 blob 越小命中率越高、MTP 收益越能全额兑现——纯速度打法的最优解
+- **结果**：**93.5 tok/s**（spec_min_p=0.3），追平桌面 5070 参考值；草稿接受率 44-54%
+
+### 3️⃣ ISTA GSQ-RCO IQ3_XXS —— 质量线（当前日常）
+
+- **优势**：3-bit i-quant，质量高一档；草稿质量也是三个部署版本里最好的（接受率 59-71%）
+- **为什么选**：长项目/推理密集场景需要更低的量化损失；且 arena 42.9GB 在 64GB 内存上给 256K 上下文留足余量
+- **结果**：**77.4 tok/s**（32K）/ 74.4 tok/s（256K+Vision）。注意它的 spec_min_p 峰值在 0.7 与 Q2_0 的 0.3 完全不同
+
+### 4️⃣ ISTA GSQ-RCO IQ3_S —— 评估后否决
+
+- **优势**：3.5-bit，官方基准上**匹配完整 BF16 模型**——三档里质量最高
+- **为什么放弃**：arena 50.3 GB pinned，256K 上下文的 KV 还要 3.1 GB——64GB 内存的机器上只剩 ~10GB 给系统，官方自己也标注"64 GB PC with little else running"。256K 是硬需求，这个组合风险不可接受
+- **复活条件**：内存升级到 96GB 后即可启用（见 [内存升级 96GB 可行性分析](./内存升级96GB可行性分析.md) 本地文档）
+
+### 5️⃣ ISTA GSQ-RCO IQ2_XS —— 评估后未部署
+
+- **优势**：2-bit i-quant，质量略好于 Q2_0，速度官方描述"close in speed"
+- **为什么没上**：Q2_0 已实测 93.5 且 IQ2_XS 的质量增量介于 Q2_0 与 IQ3_XXS 之间——质量需求出现时我们直接跳了 IQ3_XXS，中间档没有部署价值
+- **保留意见**：若需要"比 Q2_0 好一点但比 IQ3_XXS 快很多"的档位，它是现成候选
+
+### 6️⃣ Coder IQ1_M —— 省内存线（备选）
+
+- **优势**：官方把 512 专家剪枝到 256（专门保留代码、工具、视觉相关的专家），arena 只有 23.4GB——**内存减半**；存储密度反而是"IQ3_S like"的 3.5bit
+- **为什么选**：内存紧张时多开实例、或需要 32K 以上上下文且不想动用 streaming 的场景
+- **结果**：62.5 tok/s（MTP 修复后）；官方数据非代码领域弱于完整版，与我们"剪枝专家"的预期一致
+
+### 7️⃣ Qwen BF16 官方 checkpoint —— 只取 MTP 权重
+
+- **优势**：无损原版，一切量化的理论上限；354GB 显然无法本地部署
+- **为什么还下载它**：Strata 的 MTP 草稿层权重只存在于 BF16 checkpoint 的 `mtp.*` 张量里（GSQ-RCO 量化版不带）——用 HTTP Range 精准拉取 5.2GB 而非 360GB 全量
+- **结果**：间接导致本次最大的坑（[MTP 权重损坏事故](./docs/mtp-corruption-postmortem.md)），也间接产出了检测/修复工具链
+
+### 8️⃣ mmproj BF16 Vision Encoder —— 视觉能力
+
+- **优势**：27 层 ViT + projector，1,024 token/图上限，GPU 编码 0.1-0.5s/张
+- **为什么选**：Vision 是硬需求；0.9GB 一次下载
+- **结果**：挂载成功，识别验证全对，256K+Vision 并存速度损失约 16%
+
+---
+
+
+
 ## 这是什么 / What this is
 
 在一台**消费级笔记本**上跑通 **177B 参数的 MoE 大模型** —— 不是"能加载"，而是**能日常使用**：
