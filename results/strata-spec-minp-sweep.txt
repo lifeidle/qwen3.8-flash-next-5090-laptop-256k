@@ -1,0 +1,31 @@
+spec_min_p sweep: the optimum MOVES per model (IQ3_XXS vs Q2_0 are opposites)
+==============================================================================
+The speculative window T is gated by the previous draft's confidence:
+    T starts at 1; it grows toward spec only while dprob[T-1] >= spec_min_p.
+A high-quality drafter can afford a high bar; a mediocre drafter must cast wide.
+
+IQ3_XXS (256K ctx + Vision, Strata 0.1.28, cache-busted, 384 max tokens):
+
+  spec_min_p   median tok/s     note
+  0.10         66.8             too low: wrong drafts drag verify down
+  0.20         60.4             collapse
+  0.25         72.6
+  0.30         66.8 - 73.2      (the value Q2_0 peaks at - NOT optimal here)
+  0.40         76.4
+  0.45         79.4
+  0.60         72.5 - 82.5
+  0.70         74.4 - 83.6      <-- PEAK, fixed into the config
+  0.80         77.0
+  0.90         79.7 (noisy)
+  1.00 (off)   63.7             MTP is still worth +15%
+
+Q2_0 (from the same day's sweep):
+  0.30         93.5  <-- PEAK
+  0.50         90.1
+  0.70         87.2
+
+Draft acceptance at IQ3_XXS 0.70: 143 of 202 = 70.8%
+MTP off vs on at IQ3_XXS: 63.7 vs 74.4 = +16.8% from speculation alone.
+
+Lesson: re-sweep spec_min_p for EVERY model. The peak location tracks draft
+quality; copying another model's optimum costs 10-15%.
