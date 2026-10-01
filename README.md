@@ -27,7 +27,7 @@ llama.cpp 的部署实录到此为止。之后换用第三方引擎 [Strata](htt
 
 本次实录的四个重点：
 
-1. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加探针定位 NaN → 重拉修复 → MTP 接受率 0% → 70.8%
+1. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加探针定位 NaN → 重拉修复 → MTP 接受率 0% → 70.8%。完整复盘：[docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md)（已报上游 [Strata#327](https://github.com/Niko1221/Strata/issues/327)）
 2. **spec_min_p 峰值随草稿质量漂移**：Q2_0 峰在 0.3，IQ3_XXS 峰在 0.7（草稿质量越高阈值越可以从严），换模型必须重扫
 3. **256K 上下文阶梯**：KV streaming 下 65K/128K/256K 速度几乎无损（64GB 内存实测 256K 稳定，官方 setup 的 128K 上限过于保守）
 4. **Vision + 256K 并存**：每图 ≤1024 token，单会话理论上可塞 250+ 张图
