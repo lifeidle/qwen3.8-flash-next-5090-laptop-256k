@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 430" font-family="-apple-system,'Segoe UI',Roboto,Helvetica,Arial,sans-serif">
+  <rect x="0" y="0" width="880" height="430" rx="12" fill="#ffffff" stroke="#d0d7de" stroke-width="1"/>
+  <text x="28" y="42" font-size="20" font-weight="700" fill="#1f2328">Qwen3.8-Flash-Next (177B MoE) — decode throughput on RTX 5090 Laptop 24GB</text>
+  <text x="28" y="66" font-size="13" fill="#57606a">6-prompt median, cache-busted, MTP on at each model's swept optimum · 64 GB RAM · 26+ tuning rounds documented below</text>
+
+  <!-- scale: 0..100 tok/s maps to x 340..830 (490 px) -->
+  <!-- rows -->
+  <!-- 1. llama.cpp 25.0 -->
+  <text x="330" y="112" font-size="13.5" text-anchor="end" fill="#1f2328">llama.cpp 3.84bpw (AD quant)</text>
+  <rect x="340" y="98" width="125" height="26" rx="4" fill="#8b949e"/>
+  <text x="473" y="116" font-size="13.5" font-weight="700" fill="#57606a">25.0</text>
+
+  <!-- 2. Strata Coder IQ1_M 62.5 -->
+  <text x="330" y="168" font-size="13.5" text-anchor="end" fill="#1f2328">Strata · Coder IQ1_M · MTP fixed</text>
+  <rect x="340" y="154" width="307" height="26" rx="4" fill="#539bf5"/>
+  <text x="655" y="172" font-size="13.5" font-weight="700" fill="#3a6fb5">62.5</text>
+
+  <!-- 3. Strata IQ3_XXS 77.4 -->
+  <text x="330" y="224" font-size="13.5" text-anchor="end" fill="#1f2328">Strata · IQ3_XXS · MTP fixed</text>
+  <rect x="340" y="210" width="379" height="26" rx="4" fill="#8250df"/>
+  <text x="727" y="228" font-size="13.5" font-weight="700" fill="#6e40c9">77.4</text>
+
+  <!-- 4. Strata Q2_0 93.5 (best) -->
+  <text x="330" y="280" font-size="13.5" font-weight="700" text-anchor="end" fill="#1a7f37">Strata · Q2_0 · MTP fixed ★</text>
+  <rect x="340" y="266" width="457" height="26" rx="4" fill="#2da44e"/>
+  <text x="805" y="284" font-size="14.5" font-weight="800" fill="#1a7f37">93.5</text>
+
+  <!-- 5. upstream reference 93.0 -->
+  <text x="330" y="336" font-size="13" text-anchor="end" fill="#57606a">upstream ref · 5070 desktop + R5 7600</text>
+  <rect x="340" y="322" width="455" height="26" rx="4" fill="#ffffff" stroke="#d0d7de" stroke-dasharray="5,4"/>
+  <text x="803" y="340" font-size="13.5" font-weight="700" fill="#57606a">93.0</text>
+
+  <!-- gridlines -->
+  <g stroke="#eaeef2">
+    <line x1="340" y1="86" x2="340" y2="356"/>
+    <line x1="432.5" y1="86" x2="432.5" y2="356"/>
+    <line x1="525" y1="86" x2="525" y2="356"/>
+    <line x1="617.5" y1="86" x2="617.5" y2="356"/>
+    <line x1="710" y1="86" x2="710" y2="356"/>
+    <line x1="802.5" y1="86" x2="802.5" y2="356"/>
+  </g>
+  <g font-size="10.5" fill="#8c959f" text-anchor="middle">
+    <text x="340" y="370">0</text><text x="432.5" y="370">20</text><text x="525" y="370">40</text>
+    <text x="617.5" y="370">60</text><text x="710" y="370">80</text><text x="802.5" y="370">100</text>
+    <text x="802.5" y="384" fill="#57606a">tok/s</text>
+  </g>
+
+  <text x="28" y="406" font-size="12.5" fill="#57606a">MTP drafter repair alone: 0 of 381 proposals accepted → 62 of 195 (31.8%) · +64% decode at forced windows · CPU and GPU now saturate together</text>
+</svg>
