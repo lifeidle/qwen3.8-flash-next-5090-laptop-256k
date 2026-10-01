@@ -15,25 +15,51 @@
 
 ---
 
-## ⚡ 2026-10 更新：Strata 引擎实测 —— 25 → 93.5 tok/s（3.7 倍）
+## ⚡ Strata 引擎实测 —— 26 轮实测 · 7 个量化档位筛选 · 25+ 组参数扫描 · 25 → 93.5 tok/s
 
-llama.cpp 的部署实录到此为止。之后换用第三方引擎 [Strata](https://github.com/Niko1221/Strata) 完整重测，结构性突破了 llama.cpp 时代的单核 CPU 瓶颈——**GPU 与 CPU 占用率第一次同时占满**：
+**筛选过程**：2 个引擎家族（llama.cpp b10840/b10889、Strata 0.1.27/0.1.28）、7 个量化档位（AD 3.84bpw / IQ1_M / Q2_0 / IQ2_XS / IQ3_XXS / IQ3_S / BF16）、25+ 组参数扫描、12 个假设逐一排除——最终落位两个"最佳"：
 
-| 量化（GSQ-RCO） | 有效精度 | llama.cpp | Strata（MTP 修复后最优） |
+- **速度优先**：Q2_0 完整版 · **93.5 tok/s**（比 llama.cpp 时代快 3.7 倍，追平桌面 5070 参考）
+- **质量优先**：IQ3_XXS 完整版 · 77.4 tok/s（256K + Vision 日常配置下 74.4 tok/s）
+- 附赠：Coder IQ1_M（62.5 tok/s，内存减半，多开/超长上下文备选）
+
+![速度对比](./assets/speed-comparison.svg)
+
+### 四个重点发现
+
+1. **GPU 与 CPU 第一次同时占满**：llama.cpp 时代 CPU 单核钉死 100%、GPU 闲 20-40%；Strata 三层架构（热专家显存缓存 + CPU 池 + MTP 流水线重叠）让两个处理器同时满载——这是 3.7 倍提升的结构性根因
+2. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加 NaN 探针定位 → 重拉修复 → MTP 接受率 0% → 70.8%。完整复盘：[docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md)（已报上游 [Strata#327](https://github.com/Niko1221/Strata/issues/327)）
+3. **spec_min_p 峰值随草稿质量漂移**：Q2_0 峰在 0.3，IQ3_XXS 峰在 0.7——换模型必须重扫（见下方曲线）
+4. **256K 上下文几乎免费**：KV streaming 下 65K/128K/256K 速度几乎相同，64GB 内存实测 256K 稳定；Vision 与 256K 并存（每图 ≤1024 token，单会话可塞 250+ 张图）
+
+![spec_min_p sweep](./assets/spec-minp-sweep.svg)
+
+### Strata 时代 18 轮调优明细
+
+| 轮 | 动作 | 结果 | 决策 |
 |---|---|---|---|
-| Coder IQ1_M（256 专家） | 1.89 bpw | — | 62.5 tok/s |
-| Q2_0 完整版（512 专家） | ~2.2 bpw | 25 tok/s | **93.5 tok/s** |
-| IQ3_XXS 完整版（512 专家） | ~3.1 bpw | — | **77.4 tok/s**（256K+Vision 下 74.4） |
-
-本次实录的四个重点：
-
-1. **MTP 坏死之谜**：31 个草稿层权重文件里 20 个因 HTTP Range 被镜像站忽略而下载损坏（存成了 shard 头部），sha256 校验无法发现；自编译引擎加探针定位 NaN → 重拉修复 → MTP 接受率 0% → 70.8%。完整复盘：[docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md)（已报上游 [Strata#327](https://github.com/Niko1221/Strata/issues/327)）
-2. **spec_min_p 峰值随草稿质量漂移**：Q2_0 峰在 0.3，IQ3_XXS 峰在 0.7（草稿质量越高阈值越可以从严），换模型必须重扫
-3. **256K 上下文阶梯**：KV streaming 下 65K/128K/256K 速度几乎无损（64GB 内存实测 256K 稳定，官方 setup 的 128K 上限过于保守）
-4. **Vision + 256K 并存**：每图 ≤1024 token，单会话理论上可塞 250+ 张图
+| R1 | Strata 0.1.27 安装 + Coder IQ1_M 首测 | 58.4 tok/s | 引擎可行（vs llama.cpp +133%），继续 |
+| R2 | Q2_0 打包 + 首测 | 66.7 tok/s | MTP 异常浮现（`0 of 0`） |
+| R3 | 采样参数全扫（温度/seed/长度） | 无变化 | 排除 |
+| R4 | 专家数错配假设 → 换 512 专家完整版 | 仍 0 | 排除 |
+| R5 | draft_vocab 缺 CJK 检查（上游 #137） | 已是修复版 | 排除 |
+| R6 | IQ 内核宽度分歧（上游 #152）→ 绕过实测 | 仍 0 | 排除 |
+| R7 | 读引擎源码：`0 of 0` 语义 | T 恒为 1 | **关键转折：草稿从未被提出** |
+| R8 | 强制开窗（`spec_min_p=0`） | `0 of 765` | 草稿提出即全错 → 草稿层本身坏 |
+| R9 | 自编译引擎 + NaN 探针 | `dprob=NaN` | 前向第一个 matmul 即崩 → 锁定权重内容 |
+| R10 | 权重文件逐个审计 | 20/31 是 shard 头 | **根因：Range 被镜像忽略** |
+| R11 | 重拉 20 文件 + 重打包 + 验证全绿 | `62 of 195` | **MTP 复活（+64%）** |
+| R12 | Q2_0 `spec_min_p` 扫描 | 峰 0.3 = **93.5** | 固化 |
+| R13 | 升级引擎 0.1.28 + 复测 | 行为不变 | 排除版本因素 |
+| R14 | IQ3_XXS 部署 + 扫描 | 峰 0.7 = **77.4** | 固化（质量优先线） |
+| R15 | 上下文阶梯 32K/65K/128K/256K | 256K 稳定 | KV streaming 配置拉满 |
+| R16 | Vision 挂载 + 识别验证 | 全对 | 74.4 tok/s @256K+Vision |
+| R17 | spec 6 / k8v4 / pcie_frac 复扫 | 均不如现配置 | 否决并记录 |
+| R18 | 防缓存公平复测（双语 README + postmortem + issue#327） | **74.4 定稿** | 交付 |
 
 > 📘 **Strata 完整实录（中文）** → [docs/strata-log.zh.md](./docs/strata-log.zh.md) ｜ [English](./docs/strata-log.en.md)
-> 🧪 **数据** → [results/strata-*.txt](./results/strata-mtp-repair.txt)　🛠 **权重损坏检测/修复工具** → [tools/](./tools/check_dense.py)
+> 🔬 **MTP 损坏事故复盘** → [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md)（上游 [Strata#327](https://github.com/Niko1221/Strata/issues/327)）
+> 🧪 **原始数据** → [results/strata-*.txt](./results/strata-mtp-repair.txt)　🛠 **修复工具** → [tools/](./tools/check_dense.py)
 
 ---
 
