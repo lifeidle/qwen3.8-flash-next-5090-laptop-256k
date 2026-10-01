@@ -1,0 +1,32 @@
+Three GSQ-RCO quants on Strata 0.1.28, RTX 5090 Laptop 24GB + 64GB RAM
+=======================================================================
+All numbers: 6-prompt client-side median, temperature 0, prompt-cache busted,
+MTP on with the model's optimal spec_min_p (re-swept per model).
+
+| Quant                      | Effective | arena pinned | expert slots | speed         | optimal spec_min_p |
+|----------------------------|-----------|--------------|--------------|---------------|--------------------|
+| Coder IQ1_M (256 experts)  | 1.89 bpw  | 23.4 GB      | ~13,000      | 62.5 tok/s    | 0.3                |
+| Q2_0 full (512 experts)    | ~2.2 bpw  | 34.0 GB      | 13,212       | 93.5 tok/s    | 0.3                |
+| IQ3_XXS full (512 experts) | ~3.1 bpw  | 42.9 GB      | 9,588        | 77.4 tok/s    | 0.7                |
+
+Reference points:
+  llama.cpp era (same laptop, 3.84bpw AD quant): 22-25 tok/s, CPU single-core bound
+  Upstream reference (desktop RTX 5070 12GB + Ryzen 5 7600, Q2_0): 93 tok/s
+
+Q2_0 detail (per-prompt, 384 max tokens, cache-busted):
+  jet engine        80.84
+  water cycle       83.87
+  roman empire      78.50
+  neural networks   72.59
+  relativity        79.72
+  photosynthesis    83.24
+  median 79.11 (config spec_min_p=0.5) -> 93.49 median with spec_min_p=0.3 (strata_tune)
+
+MTP draft acceptance by model (healthy drafter):
+  Q2_0:      44-54%   (141 of 263 etc.)
+  IQ3_XXS:   59-71%   (185 of 313, 143 of 202)
+  Coder:     41-61%   (439 of 725 on a 700-token output)
+
+Why IQ3_XXS despite lower peak speed: better quantization quality for long
+reasoning-heavy projects, and the 256K-context memory headroom is comfortable
+(42.9 GB pinned arena vs IQ3_S's 50.3 GB, which does not fit 64 GB RAM at 256K).
