@@ -15,25 +15,51 @@
 
 ---
 
-## ⚡ Oct 2026 update: Strata engine — 25 → 93.5 tok/s (3.7x)
+## ⚡ Strata engine era — 26 measured rounds · 7 quant tiers screened · 25+ parameter sweeps · 25 → 93.5 tok/s
 
-The llama.cpp log ends here. I then re-tested everything on the third-party [Strata](https://github.com/Niko1221/Strata) engine, which structurally fixed the single-core CPU bottleneck — **GPU and CPU utilization are both near 100% for the first time**:
+**The screening**: 2 engine families (llama.cpp b10840/b10889, Strata 0.1.27/0.1.28), 7 quant tiers (AD 3.84bpw / IQ1_M / Q2_0 / IQ2_XS / IQ3_XXS / IQ3_S / BF16), 25+ parameter sweep points, 12 hypotheses eliminated one by one — landing on two "bests":
 
-| Quant (GSQ-RCO) | Effective | llama.cpp | Strata (post-MTP-fix, tuned) |
+- **Speed-first**: Q2_0 full · **93.5 tok/s** (3.7x over the llama.cpp era; matches the desktop 5070 reference)
+- **Quality-first**: IQ3_XXS full · 77.4 tok/s (74.4 tok/s at 256K + Vision, the daily config)
+- Bonus: Coder IQ1_M (62.5 tok/s, half the RAM — multi-instance / extra-long context backup)
+
+![speed comparison](./assets/speed-comparison.svg)
+
+### Four headline findings
+
+1. **GPU and CPU saturate together, for the first time**: llama.cpp pinned one CPU core at 100% while the GPU idled at 20-40%; Strata's three-tier scheme (hot-expert VRAM cache + CPU pool + overlapping MTP pipeline) loads both processors at once — the structural reason behind the 3.7x
+2. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header; the tool saved the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance 0% → 70.8%. Full postmortem: [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md) (filed upstream as [Strata#327](https://github.com/Niko1221/Strata/issues/327))
+3. **The spec_min_p peak moves per model**: Q2_0 peaks at 0.3, IQ3_XXS at 0.7 — re-sweep on every model change (curve below)
+4. **256K context is nearly free**: with KV streaming, 65K/128K/256K cost the same; verified stable on 64 GB RAM. Vision coexists with 256K (≤1,024 tokens/image — 250+ images per conversation)
+
+![spec_min_p sweep](./assets/spec-minp-sweep.svg)
+
+### The 18 tuning rounds of the Strata era
+
+| R | Action | Result | Decision |
 |---|---|---|---|
-| Coder IQ1_M (256 experts) | 1.89 bpw | — | 62.5 tok/s |
-| Q2_0 full (512 experts) | ~2.2 bpw | 25 tok/s | **93.5 tok/s** |
-| IQ3_XXS full (512 experts) | ~3.1 bpw | — | **77.4 tok/s** (74.4 at 256K+Vision) |
-
-Four highlights from this round:
-
-1. **The dead-MTP mystery**: 20 of 31 drafter weight files were corrupted downloads (a mirror ignored the HTTP Range header and returned whole shards; the tool kept the shard headers). sha256 over downloaded bytes cannot catch this. Self-compiled the engine with NaN probes → re-fetched → MTP acceptance went 0% → 70.8%. Full postmortem: [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md) (filed upstream as [Strata#327](https://github.com/Niko1221/Strata/issues/327))
-2. **The spec_min_p peak moves per model**: Q2_0 peaks at 0.3, IQ3_XXS at 0.7 (the better the drafter, the higher the bar) — re-sweep on every model change
-3. **256K context ladder**: with KV streaming, 65K/128K/256K cost almost nothing (256K verified stable on 64 GB RAM; setup's 128K cap is conservative)
-4. **Vision + 256K coexist**: ≤1,024 tokens per image, 250+ images fit in one conversation
+| R1 | Strata 0.1.27 install + Coder IQ1_M first run | 58.4 tok/s | engine viable (+133% vs llama.cpp) — continue |
+| R2 | Q2_0 packed + first run | 66.7 tok/s | MTP anomaly surfaces (`0 of 0`) |
+| R3 | Sampling sweep (temperature/seed/length) | no change | ruled out |
+| R4 | Expert-count mismatch → switch to 512-expert full | still 0 | ruled out |
+| R5 | draft_vocab CJK check (upstream #137) | already fixed | ruled out |
+| R6 | IQ kernel width (upstream #152) → bypass tested | still 0 | ruled out |
+| R7 | Read engine source: semantics of `0 of 0` | T always 1 | **turning point: drafts never proposed** |
+| R8 | Force windows open (`spec_min_p=0`) | `0 of 765` | proposals 100% wrong → the drafter itself is broken |
+| R9 | Self-compiled engine + NaN probe | `dprob=NaN` | first matmul already NaN → weights suspected |
+| R10 | Per-file weight audit | 20/31 are shard headers | **root cause: ignored Range headers** |
+| R11 | Re-fetch 20 files + re-pack + verify clean | `62 of 195` | **MTP alive (+64%)** |
+| R12 | Q2_0 `spec_min_p` sweep | peak 0.3 = **93.5** | fixed |
+| R13 | Upgrade to 0.1.28 + retest | unchanged | version ruled out |
+| R14 | IQ3_XXS deploy + sweep | peak 0.7 = **77.4** | fixed (quality-first line) |
+| R15 | Context ladder 32K/65K/128K/256K | 256K stable | KV streaming configured |
+| R16 | Vision mounted + recognition check | all correct | 74.4 tok/s @256K+Vision |
+| R17 | spec 6 / k8v4 / pcie_frac re-sweeps | all worse | rejected, documented |
+| R18 | Cache-busted fair re-test (+ README + postmortem + issue#327) | **74.4 final** | shipped |
 
 > 📘 **Full Strata log (English)** → [docs/strata-log.en.md](./docs/strata-log.en.md) ｜ [中文](./docs/strata-log.zh.md)
-> 🧪 **Data** → [results/strata-*.txt](./results/strata-mtp-repair.txt)　🛠 **Corruption detector/fixer** → [tools/](./tools/check_dense.py)
+> 🔬 **MTP corruption postmortem** → [docs/mtp-corruption-postmortem.md](./docs/mtp-corruption-postmortem.md) (upstream [Strata#327](https://github.com/Niko1221/Strata/issues/327))
+> 🧪 **Raw data** → [results/strata-*.txt](./results/strata-mtp-repair.txt)　🛠 **Repair tools** → [tools/](./tools/check_dense.py)
 
 ---
 
